@@ -80,6 +80,8 @@ for name in ['LD_PRELOAD', 'LD_AUDIT', 'ELECTRON_DISABLE_SANDBOX', 'CHROME_DEVEL
     env.pop(name, None)
 try:
     preload.write_bytes(b'')
+    # The supervisor must never accept a root prompt left by the previous boot.
+    (B / 'minimal-serial.log').write_bytes(b'')
     with (B / 'minimal-qemu.log').open('w') as log:
         process = subprocess.Popen([helper, *argv], env=env, stdin=subprocess.DEVNULL,
                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)

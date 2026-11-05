@@ -49,7 +49,12 @@ def console(script, timeout=90):
     process = subprocess.run([sys.executable, str(TOOLS / 'console.py'), '--timeout', str(timeout)],
                              input=script, text=True, capture_output=True, timeout=timeout + 5)
     if process.returncode:
-        raise RuntimeError('Guest console transport failed')
+        detail = next((message for message in (
+            'Console did not acknowledge the command',
+            'Console did not acknowledge a script chunk',
+            'Connection refused', 'No such file or directory',
+        ) if message in process.stderr), 'transport error')
+        raise RuntimeError('Guest console: ' + detail)
     result = json.loads(process.stdout)
     if not result['complete'] or result['exit'] != 0:
         raise RuntimeError('Guest command did not complete')

@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "base_commit": "55362d68efbf5ba6ff8f302b914a1d37d0b73a06",
+  "edition": "Chrome Preview; prepared runtime required",
+  "files": [
+    {
+      "path": "app/build.gradle",
+      "size": 18940,
+      "sha256": "ac8bb804857d304ef323c19b76207ef01572b72ee99703fe5f9e703598c3887a"
+    },
+    {
+      "path": "app/src/chrome/AndroidManifest.xml",
+      "size": 1282,
+      "sha256": "c6c435d6ef71b3243c796316a9640a496f00e41dc083b1c9ea616d9d17b7de16"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "size": 19151,
+      "sha256": "8933f89306560fc0c6f62466115b1a8673776b31202bd4cf13b5edf0313fcf3c"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/boot.py",
+      "size": 4892,
+      "sha256": "3db76b328e408778ab4bd2534f9a8e61d76fb7118a4b84b0ce5019a302c7d920"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/console.py",
+      "size": 3212,
+      "sha256": "a6a68dc20c5ddd342c874036004bedb9cac64cd51b67cf4a5eb2caaca7159168"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/guest_chrome.py",
+      "size": 3394,
+      "sha256": "4c1a29ec4142a4f580670bf79256d5c96d5697fcaeedae9dc9674dcfe6ecab1a"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/local_display.py",
+      "size": 7217,
+      "sha256": "7803bc3739e1c47bf4923b3c6cbe715a17a798e1fa25bef019020f79affdabc6"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/services.sh",
+      "size": 861,
+      "sha256": "685d2abbbd9cda47a6eabe12954829827fab3a1f37aa1ea67a787f8f148ee18e"
+    },
+    {
+      "path": "app/src/main/assets/chrome-preview/supervisor.py",
+      "size": 8836,
+      "sha256": "7786b3689efe57636c493679be2f8bc188eb7323afcc0b4b68c9374faad59fa5"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromeDisplayActivity.kt",
+      "size": 4206,
+      "sha256": "4ceb180d0d4f4364d50cfc1bff86448d891f153586bebbf121a9a3ca037c3d86"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromeDisplayView.kt",
+      "size": 11853,
+      "sha256": "2d765aaaaaa94975a0c494820e0f6198a851317a4eb3c84da64978edf9ebf110"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromeHomeActivity.kt",
+      "size": 5571,
+      "sha256": "b5ff317bbb538c9465bb420187e1a8840e4a2d44a0b4f79162422828ee0b9443"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromePreviewRuntime.kt",
+      "size": 2871,
+      "sha256": "15f601199d64758026a06bf64864118e752037c6227beb003fde54336b69b6ad"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromePreviewService.kt",
+      "size": 4004,
+      "sha256": "d24f93c1e17aa84a1bb65342f1c95e18dc016ba7213cb1af98c752a39dc6afe8"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/chrome/RfbConnection.java",
+      "size": 10403,
+      "sha256": "10c7eabe406da98c90736dd9a5a1a433a2433dfc84876055cab4a6794088e18a"
+    },
+    {
+      "path": "app/src/main/res/values/chrome_preview.xml",
+      "size": 2160,
+      "sha256": "6cba3ced0ee2638e23c0f516360116fd6401cbe8a16ab6339fa8573ba58da87d"
+    },
+    {
+      "path": "app/src/main/res/values-th/chrome_preview.xml",
+      "size": 3128,
+      "sha256": "07148986624af25a658284db1e602f8c0d2ea268f4f478a482700e770d991917"
+    },
+    {
+      "path": "app/src/test/java/com/droiddeck/launcher/chrome/RfbConnectionTest.java",
+      "size": 4980,
+      "sha256": "5e12fd71120a75161cf50bece5815d33861e4eb0fc22152f28179a86d4d79395"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chrome_preview_title">Chrome Desktop รุ่นทดสอบ</string>
+    <string name="chrome_preview_notice">รุ่นทดสอบสำหรับ Linux runtime ที่เตรียมไว้บนเครื่องนี้ ระบบติดตั้งอัตโนมัติยังอยู่ระหว่างพัฒนา</string>
+    <string name="chrome_preview_launch">เปิด Chrome Desktop</string>
+    <string name="chrome_preview_desktop">แสดง Desktop</string>
+    <string name="chrome_preview_stop">ปิด Chrome</string>
+    <string name="chrome_preview_starting">กำลังเริ่ม Linux และ Chrome… อาจใช้เวลาหลายนาที</string>
+    <string name="chrome_preview_running">เริ่มโปรเซส Chrome แล้ว หน้าต่างอาจใช้เวลาหลายนาทีก่อนแสดงผล</string>
+    <string name="chrome_preview_stopping">กำลังปิด Chrome…</string>
+    <string name="chrome_preview_stopped">Chrome หยุดอยู่</string>
+    <string name="chrome_preview_start_failed">เริ่ม Chrome ไม่สำเร็จ ดูรายละเอียดที่การวินิจฉัย</string>
+    <string name="chrome_preview_prepared_required">รุ่นทดสอบนี้ต้องใช้ Linux runtime ที่ตรวจสอบและเตรียมไว้สำหรับเครื่องนี้ ยังไม่รองรับการติดตั้ง runtime อัตโนมัติ</string>
+    <string name="chrome_preview_url_hint">https://…</string>
+    <string name="chrome_preview_open_url">เปิด URL</string>
+    <string name="chrome_preview_invalid_url">ระบุที่อยู่ HTTP หรือ HTTPS โดยไม่มีชื่อผู้ใช้หรือรหัสผ่านฝังใน URL</string>
+    <string name="chrome_preview_settings">การตั้งค่า Chrome</string>
+    <string name="chrome_preview_diagnostics">การวินิจฉัย</string>
+    <string name="chrome_preview_runtime_settings">การตั้งค่า Linux runtime</string>
+    <string name="chrome_preview_stop_before_maintenance">ปิด Chrome ก่อนเปลี่ยนหรือลบ Linux runtime</string>
+    <string name="chrome_preview_back">กลับ</string>
+    <string name="chrome_preview_keyboard">คีย์บอร์ด</string>
+    <string name="chrome_preview_escape">Esc</string>
+    <string name="chrome_preview_retry">เชื่อมต่อใหม่</string>
+    <string name="chrome_preview_display_failed">เชื่อมต่อจอไม่สำเร็จ แตะเชื่อมต่อใหม่</string>
+    <string name="chrome_preview_display_unavailable">เปิด Chrome จากหน้าหลักก่อน</string>
+</resources>

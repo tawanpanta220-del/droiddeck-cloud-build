@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000"
+        android:required="false" tools:replace="android:required" />
+    <application android:label="DroidDeck Chrome Preview" tools:replace="android:label">
+        <activity android:name=".chrome.ChromeHomeActivity" android:exported="false"
+            android:screenOrientation="user" />
+        <activity android:name=".chrome.ChromeDisplayActivity" android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard"
+            android:windowSoftInputMode="adjustResize" />
+        <service android:name=".chrome.ChromePreviewService" android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <activity-alias android:name=".MainActivity" android:targetActivity=".chrome.ChromeHomeActivity"
+            android:label="DroidDeck Chrome Preview" tools:replace="android:targetActivity" />
+    </application>
+</manifest>

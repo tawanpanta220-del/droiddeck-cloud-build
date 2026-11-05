@@ -1,0 +1,647 @@
+name: DroidDeck Chrome Preview APK on Cloud
+run-name: DroidDeck Chrome Preview on upstream 55362d6
+'on':
+  push:
+    paths:
+    - .github/workflows/cloud-chrome-preview.yml
+    - chrome-preview/**
+  workflow_dispatch:
+    inputs:
+      rebuild_preloads:
+        description: Rebuild native preloads rather than reuse verified upstream snapshots
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: cloud-chrome-preview-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  GH_TOKEN: ${{ github.token }}
+jobs:
+  source:
+    name: Pin the upstream baseline source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      base-sha: ${{ steps.source.outputs.commit-sha }}
+      tree-sha: ${{ steps.source.outputs.tree-sha }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: Droid-Deck/DroidDeck
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        persist-credentials: false
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+    - name: Record the pinned source
+      id: source
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "55362d68efbf5ba6ff8f302b914a1d37d0b73a06"
+        echo "commit-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        echo "tree-sha=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+        echo "Building pinned native inputs; the Android job applies the Chrome preview source overlay." >> "$GITHUB_STEP_SUMMARY"
+  xbox:
+    name: Xbox ARM64 backend
+    needs: source
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        repository: Droid-Deck/DroidDeck
+    - name: Verify pinned source tree
+      env:
+        SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+    - name: Plan component identities
+      id: plan
+      run: python3 tools/components/prepare.py plan
+    - uses: actions/cache@v4
+      id: xbox-cache
+      with:
+        path: |
+          app/src/main/assets/linuxfs/usr/local/lib/droiddeck-xbox
+          app/build/xbox/xodus-droiddeck-source.tar.xz
+          app/build/xbox/runtime/*-source.tar.xz
+        key: xbox-v2-${{ steps.plan.outputs.xbox }}
+    - name: Build Xbox backend
+      if: steps.xbox-cache.outputs.cache-hit != 'true'
+      run: python3 tools/components/prepare.py xbox
+    - uses: actions/upload-artifact@v4
+      with:
+        name: xbox-arm64
+        path: app/src/main/assets/linuxfs/usr/local/lib/droiddeck-xbox
+        retention-days: 14
+    - uses: actions/upload-artifact@v4
+      with:
+        name: xbox-corresponding-source
+        path: |
+          app/build/xbox/xodus-droiddeck-source.tar.xz
+          app/build/xbox/runtime/*-source.tar.xz
+        if-no-files-found: error
+        retention-days: 14
+  components:
+    name: Prepare verified components
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        repository: Droid-Deck/DroidDeck
+    - name: Verify pinned source tree
+      env:
+        SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+    - name: Resolve the pinned Android NDK
+      run: bash tools/ci/resolve-ndk.sh
+    - name: Plan component identities
+      id: plan
+      run: python3 tools/components/prepare.py plan
+    - name: Cache remaining Linux runtime assets
+      id: preloads
+      uses: actions/cache@v4
+      with:
+        path: |
+          app/src/main/assets/linuxfs
+          !app/src/main/assets/linuxfs/usr/local/lib/droiddeck-comet
+          !app/src/main/assets/linuxfs/usr/local/lib/droiddeck-xbox
+          !app/src/main/assets/linuxfs/i386/libblsession.so
+          !app/src/main/assets/linuxfs/i386/libfakeinput.so
+          !app/src/main/assets/linuxfs/i386/libfaultreport.so
+          !app/src/main/assets/linuxfs/libblaudit.so
+          !app/src/main/assets/linuxfs/libblfastpath.so
+          !app/src/main/assets/linuxfs/libblsession.so
+          !app/src/main/assets/linuxfs/libfakeinput.so
+          !app/src/main/assets/linuxfs/libssbs.so
+          !app/src/main/assets/linuxfs/usr/local/bin/droiddeck-clipboard
+          !app/src/main/assets/linuxfs/x86_64/libblsession.so
+          !app/src/main/assets/linuxfs/x86_64/libfakeinput.so
+          !app/src/main/assets/linuxfs/x86_64/libfaultreport.so
+          !app/src/main/assets/linuxfs/x86_64/libvulkan-thunk.so
+          !app/src/main/assets/linuxfs/x86_64/libwebkitinput.so
+        key: runtime-v9-${{ steps.plan.outputs.runtime }}
+    - name: Cache PulseAudio 13.0 source
+      id: pa-src
+      uses: actions/cache@v4
+      with:
+        path: pa13
+        key: pulseaudio-src-${{ steps.plan.outputs.pulseaudio-source }}
+    - name: Cache proot
+      id: proot
+      uses: actions/cache@v4
+      with:
+        path: |
+          app/src/main/jniLibs/arm64-v8a/libproot.so
+          app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+        key: proot-v2-${{ steps.plan.outputs.proot }}
+    - name: Cache GOG Galaxy companion
+      id: comet
+      uses: actions/cache@v4
+      with:
+        path: app/src/main/assets/linuxfs/usr/local/lib/droiddeck-comet
+        key: comet-v2-${{ steps.plan.outputs.comet }}
+    - name: Restore verified preload snapshots
+      id: component-preloads
+      env:
+        GH_TOKEN: ${{ github.token }}
+        FORCE_PRELOAD_REBUILD: ${{ github.event_name == 'push' || inputs.rebuild_preloads }}
+        COMPONENT_TRUSTED_BASE: ${{ needs.source.outputs.base-sha }}
+      run: python3 tools/components/prepare.py preload-snapshot
+    - name: Prepare required Linux build tools once
+      env:
+        COMPONENTS_TO_BUILD: ${{ steps.preloads.outputs.cache-hit != 'true' && 'runtime' || '' }} ${{ steps.component-preloads.outputs.arm64
+          != 'true' && 'arm64-preloads' || '' }} ${{ steps.comet.outputs.cache-hit != 'true' && 'comet' || '' }}
+      run: python3 tools/components/prepare.py tools
+    - name: Build changed ARM64 preloads
+      if: steps.component-preloads.outputs.arm64 != 'true'
+      run: python3 tools/components/prepare.py arm64-preloads
+    - name: Prepare remaining Linux runtime assets
+      if: steps.preloads.outputs.cache-hit != 'true'
+      run: python3 tools/components/prepare.py runtime
+    - name: Fetch the Debian image the preloads build in
+      if: steps.component-preloads.outputs.x86 != 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 tools/components/prepare.py debian-image
+    - name: Build the x86 preloads FEX guests load (glibc 2.31)
+      if: steps.component-preloads.outputs.x86 != 'true'
+      run: python3 tools/components/prepare.py x86-preloads
+    - name: Bundle the droiddeck-esync packs
+      run: python3 tools/components/prepare.py esync
+    - name: Fetch PulseAudio 13.0 source
+      if: steps.pa-src.outputs.cache-hit != 'true'
+      run: python3 tools/components/prepare.py pulseaudio-source
+    - name: Fetch DirectAudio (tools/directaudio/release.env)
+      run: python3 tools/components/prepare.py directaudio
+    - name: Build the AAudio sink into the audio bundle
+      run: python3 tools/components/prepare.py audio
+    - name: Build proot
+      if: steps.proot.outputs.cache-hit != 'true'
+      run: python3 tools/components/prepare.py proot
+    - name: Check the preloads
+      run: |
+        set -euo pipefail
+        bash tools/linuxfs/check-preloads.sh app/src/main/assets/linuxfs
+    - name: Build GOG Galaxy companion
+      if: steps.comet.outputs.cache-hit != 'true'
+      run: python3 tools/components/prepare.py comet
+    - name: Build the DiRT 3 / DiRT Showdown ws2_32 stand-in
+      run: python3 tools/components/prepare.py dirt-ws2
+    - name: Prepare graphics driver variants
+      run: python3 tools/quest/build-driver.py "$ANDROID_HOME/ndk/$NDK_VERSION"
+    - name: Record and pack prepared components
+      run: python3 tools/components/prepare.py pack
+    - uses: actions/upload-artifact@v4
+      with:
+        name: prepared-components
+        path: app/build/prepared-components.tar.gz
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 14
+  build:
+    needs:
+    - source
+    - components
+    - xbox
+    name: Compile APK and Android tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        submodules: recursive
+        repository: Droid-Deck/DroidDeck
+    - name: Check human authorship
+      run: |
+        python3 tools/release/check_authorship.py HEAD
+    - name: No private key in the tree
+      run: |
+        set -euo pipefail
+        keys=$(git ls-files | grep -iE '\.(jks|keystore|p12|pfx|pk8|pem|key)$' | grep -vx 'keystore/testkey.p12' || true)
+        if [ -n "$keys" ]; then
+          echo "::error::a private key is committed - remove it from the history and make a new one: $keys"
+          exit 1
+        fi
+    - name: Verify backend and APK source match
+      env:
+        XBOX_SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: test "$(git rev-parse 'HEAD^{tree}')" = "$XBOX_SOURCE_TREE"
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-read-only: false
+        cache-cleanup: on-success
+    - name: Resolve the pinned Android NDK
+      run: bash tools/ci/resolve-ndk.sh
+    - name: Set the APK build label
+      id: build-label
+      env:
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BUILD_REF: chrome-preview
+        BUILD_SHA: ${{ github.sha }}
+      run: |
+        if [[ -n "$(git status --porcelain)" ]]; then
+          tree_state=dirty
+        else
+          tree_state=clean
+        fi
+        echo "DROIDDECK_BUILD_TREE_STATE=$tree_state" >> "$GITHUB_ENV"
+        if [[ -n "$PR_NUMBER" ]]; then
+          label="pr${PR_NUMBER} at ${PR_HEAD_SHA:0:7}"
+        else
+          label="${BUILD_REF} at ${BUILD_SHA:0:7}"
+        fi
+        echo "label=$label" >> "$GITHUB_OUTPUT"
+        echo "DROIDDECK_SOURCE_COMMIT=${PR_HEAD_SHA:-$BUILD_SHA}" >> "$GITHUB_ENV"
+        echo "DROIDDECK_PR_NUMBER=${PR_NUMBER:-0}" >> "$GITHUB_ENV"
+        echo "DROIDDECK_PR_TITLE=${PR_TITLE//$'\n'/ }" >> "$GITHUB_ENV"
+        echo "Build: \`$label\`" >> "$GITHUB_STEP_SUMMARY"
+    - name: Rust toolchain for the store engines (aarch64-linux-android)
+      id: rust
+      run: |
+        set -euo pipefail
+        rustup target add aarch64-linux-android
+        echo "rustc=$(rustc -V | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        rustc -V; cargo -V
+    - name: Cache cargo registry and the store engines' target
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          ~/.cargo/bin/cargo-ndk
+          app/src/main/rust/stores/target
+        key: stores-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.NDK_VERSION }}-${{ steps.rust.outputs.rustc }}-${{ hashFiles('app/src/main/rust/stores/Cargo.lock')
+          }}-${{ hashFiles('app/src/main/rust/stores/src/**', 'app/src/main/rust/stores/Cargo.toml', 'app/src/main/rust/stores/build.rs',
+          'app/src/main/rust/stores/.cargo/**', 'app/build.gradle') }}
+        restore-keys: |
+          stores-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.NDK_VERSION }}-${{ steps.rust.outputs.rustc }}-${{ hashFiles('app/src/main/rust/stores/Cargo.lock') }}-
+          stores-v2-${{ runner.os }}-${{ runner.arch }}-${{ env.NDK_VERSION }}-${{ steps.rust.outputs.rustc }}-
+    - name: cargo-ndk
+      run: |
+        set -euo pipefail
+        command -v cargo-ndk >/dev/null || cargo install cargo-ndk --locked
+        cargo ndk --version
+    - name: Cache the CMake build tree
+      uses: actions/cache@v4
+      with:
+        path: |
+          app/.cxx
+          app/build/intermediates/cxx
+        key: cxx-${{ env.NDK_VERSION }}-${{ hashFiles('app/src/main/cpp/**', 'tools/vr/src/xr_*.h') }}
+        restore-keys: |
+          cxx-${{ env.NDK_VERSION }}-
+    - uses: actions/download-artifact@v4
+      with:
+        name: prepared-components
+        path: app/build
+    - name: Verify and unpack prepared components
+      env:
+        SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: python3 tools/components/prepare.py unpack --tree "$SOURCE_TREE"
+    - uses: actions/download-artifact@v4
+      with:
+        name: xbox-arm64
+        path: app/src/main/assets/linuxfs/usr/local/lib/droiddeck-xbox
+    - name: Cache checksum-pinned pack inputs
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/droiddeck-pack-inputs
+        key: pack-inputs-v1-${{ hashFiles('tools/packs/build.sh', 'tools/packs/fetch-verified.sh', 'tools/packs/tracking/release.env')
+          }}
+        restore-keys: pack-inputs-v1-
+    - name: Build the add-on packs
+      run: bash tools/packs/build.sh app/build/packs
+    - name: Pin the Syncthing source
+      id: syncthing-src
+      run: |
+        set -euo pipefail
+        git submodule update --init --recursive tools/syncthing/syncthing-android
+        echo "commit=$(git -C tools/syncthing/syncthing-android/syncthing/src/github.com/syncthing/syncthing rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+    - name: Cache Syncthing
+      id: syncthing
+      uses: actions/cache@v4
+      with:
+        path: app/src/main/jniLibs/arm64-v8a/libsyncthingnative.so
+        key: syncthing-${{ env.NDK_VERSION }}-${{ hashFiles('tools/syncthing/build.sh', 'tools/syncthing/syncthing-android/gradle/libs.versions.toml')
+          }}-${{ steps.syncthing-src.outputs.commit }}
+    - uses: actions/setup-go@v5
+      if: steps.syncthing.outputs.cache-hit != 'true'
+      with:
+        go-version: stable
+        cache: false
+    - name: Build Syncthing
+      if: steps.syncthing.outputs.cache-hit != 'true'
+      run: |
+        set -euo pipefail
+        export NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+        tools/syncthing/build.sh app/src/main/jniLibs/arm64-v8a
+    - name: Note when the proot pack pin is behind this build
+      run: |
+        set -euo pipefail
+        # shellcheck disable=SC1091
+        source tools/packs/proot/release.env
+        sha=$(sha256sum app/build/packs/proot.tar.zst | cut -d' ' -f1)
+        if [ "$sha" != "$PROOT_PACK_SHA256" ]; then
+          echo "::warning::built proot pack $sha does not match tools/packs/proot/release.env ($PROOT_PACK_SHA256). This build publishes the pack it just built. Source builds keep downloading the pinned pack until release.env is updated."
+        fi
+    - name: Check out the Chrome preview overlay
+      uses: actions/checkout@v4
+      with:
+        repository: tawanpanta220-del/droiddeck-cloud-build
+        ref: ${{ github.sha }}
+        path: chrome_carrier
+        persist-credentials: false
+    - name: Verify and apply the Chrome preview source
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import hashlib, json, shutil
+        from pathlib import Path
+        carrier = Path('chrome_carrier/chrome-preview')
+        manifest = json.loads((carrier / 'overlay-manifest.json').read_text())
+        assert manifest['base_commit'] == '55362d68efbf5ba6ff8f302b914a1d37d0b73a06'
+        exact = {'app/build.gradle', 'app/src/main/AndroidManifest.xml',
+                 'app/src/main/res/values/chrome_preview.xml', 'app/src/main/res/values-th/chrome_preview.xml'}
+        prefixes = ('app/src/chrome/', 'app/src/main/java/com/droiddeck/launcher/chrome/',
+                    'app/src/test/java/com/droiddeck/launcher/chrome/', 'app/src/main/assets/chrome-preview/')
+        root = Path.cwd().resolve()
+        for entry in manifest['files']:
+            name = entry['path']
+            path = Path(name)
+            assert not path.is_absolute() and '..' not in path.parts
+            assert name in exact or name.startswith(prefixes)
+            data = (carrier / 'overlay' / path).read_bytes()
+            assert len(data) == entry['size'] and hashlib.sha256(data).hexdigest() == entry['sha256']
+            target = (root / path).resolve()
+            assert target.is_relative_to(root)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        print('Applied', len(manifest['files']), 'verified source files')
+        PYCODE
+        git diff --exit-code -- app/src/main/cpp app/src/main/rust tools/linuxfs tools/packs
+        echo 'DROIDDECK_BUILD_TREE_STATE=dirty' >> "$GITHUB_ENV"
+        echo 'DROIDDECK_SOURCE_COMMIT=55362d68efbf5ba6ff8f302b914a1d37d0b73a06' >> "$GITHUB_ENV"
+    - name: Build
+      id: build
+      env:
+        DROIDDECK_BUILD_LABEL: ${{ steps.build-label.outputs.label }}
+      run: |
+        set -o pipefail
+        python3 tools/release/runtime_inputs.py record
+        ./gradlew assembleRelease --console=plain -PchromeEdition=true -PndkVersion="$NDK_VERSION" 2>&1 | tee /tmp/build.log
+        python3 tools/release/check_session_assets.py app/build/outputs/apk/release/app-release.apk
+        python3 tools/release/runtime_inputs.py apk app/build/outputs/apk/release/app-release.apk
+    - name: Check the store engines' library
+      run: |
+        set -euo pipefail
+        NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+        python3 tools/release/check_android_libraries.py app/build/outputs/apk/release/app-release.apk \
+          --readelf "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+        git diff --stat -- app/src/main/rust/stores/Cargo.lock
+        git diff --exit-code -- app/src/main/rust/stores/Cargo.lock \
+          || { echo "::error::Cargo.lock changed during the build; commit the regenerated lockfile (uploaded as stores-cargo-lock)"; exit 1; }
+    - name: Upload the regenerated Cargo.lock
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: stores-cargo-lock
+        path: app/src/main/rust/stores/Cargo.lock
+        if-no-files-found: ignore
+    - name: Unit tests
+      id: unit-tests
+      env:
+        DROIDDECK_BUILD_LABEL: ${{ steps.build-label.outputs.label }}
+      run: |
+        set -o pipefail
+        mkdir -p app/build
+        ./gradlew testReleaseUnitTest --console=plain --info --stacktrace -Drobolectric.logging=stderr -PndkVersion="$NDK_VERSION" 2>&1 | tee app/build/unit-tests.log
+    - name: Upload unit test diagnostics
+      id: unit-test-diagnostics
+      if: always() && steps.unit-tests.outcome != 'skipped'
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-results
+        path: |
+          app/build/unit-tests.log
+          app/build/test-results/testReleaseUnitTest/
+          app/build/reports/tests/testReleaseUnitTest/
+        if-no-files-found: ignore
+        retention-days: 14
+    - name: Sign with the testkey (v1 + v2 + v3)
+      run: |
+        set -euo pipefail
+        APK=$(find app/build/outputs/apk -name '*.apk' | head -1)
+        TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
+        "$TOOLS/zipalign" -p -f 4 "$APK" "$APK.aligned"
+        "$TOOLS/apksigner" sign \
+          --ks keystore/testkey.p12 --ks-type PKCS12 --ks-pass pass:android \
+          --ks-key-alias testkey --key-pass pass:android \
+          --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+          --out "$APK" "$APK.aligned"
+        rm -f "$APK.aligned" "$APK.idsig"
+    - name: Check the signature
+      run: |
+        set -euo pipefail
+        APK=$(find app/build/outputs/apk -name '*.apk' | head -1)
+        APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+        "$APKSIGNER" verify --min-sdk-version 21 --verbose --print-certs "$APK" | tee /tmp/sig.txt
+        unzip -l "$APK" | grep -qE 'META-INF/.*\.(SF|RSA|DSA)$' \
+          || { echo "::error::apk carries no JAR signature files"; exit 1; }
+        for scheme in "v1 scheme (JAR signing): true" "v2 scheme (APK Signature Scheme v2): true" \
+                      "v3 scheme (APK Signature Scheme v3): true"; do
+          grep -qF "$scheme" /tmp/sig.txt || { echo "::error::apk is not signed with $scheme"; exit 1; }
+        done
+        grep -qi "CN=Android, OU=Android, O=Android" /tmp/sig.txt \
+          || { echo "::error::apk is not signed with the AOSP testkey"; exit 1; }
+    - name: Record Chrome preview APK checksum and source
+      run: |
+        set -euo pipefail
+        mkdir -p app/build/cloud-evidence
+        sha256sum app/build/outputs/apk/release/app-release.apk > app/build/cloud-evidence/SHA256SUMS
+        git rev-parse HEAD > app/build/cloud-evidence/SOURCE_COMMIT.txt
+        git rev-parse 'HEAD^{tree}' > app/build/cloud-evidence/SOURCE_TREE.txt
+        printf '%s\n' "$GITHUB_SHA" > app/build/cloud-evidence/SOURCE_OVERLAY_COMMIT.txt
+        cp chrome_carrier/chrome-preview/overlay-manifest.json app/build/cloud-evidence/
+        (cd chrome_carrier && zip -qr ../app/build/cloud-evidence/chrome-source-overlay.zip chrome-preview)
+        printf '%s\n' 'Chrome Preview APK with an embedded Linux display and prepared-runtime controls. Automatic installation and signed updates are not implemented. This APK still needs on-device validation.' > app/build/cloud-evidence/STATUS.txt
+    - uses: actions/upload-artifact@v4
+      id: apk-upload
+      with:
+        name: droiddeck-chrome-preview-apk
+        path: app/build/outputs/apk/release/*.apk
+        if-no-files-found: error
+        retention-days: 30
+        compression-level: 0
+    - uses: actions/upload-artifact@v4
+      with:
+        name: droiddeck-baseline-packs
+        path: app/build/packs/*.tar.zst
+        if-no-files-found: error
+        retention-days: 30
+        compression-level: 0
+    - name: Collect available build diagnostics
+      if: ${{ always() }}
+      run: |
+        set -euo pipefail
+        mkdir -p app/build/cloud-evidence
+        for file in /tmp/build.log /tmp/sig.txt app/build/unit-tests.log; do
+          if [ -f "$file" ]; then cp "$file" "app/build/cloud-evidence/$(basename "$file")"; fi
+        done
+    - name: Upload baseline build evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: droiddeck-baseline-evidence
+        path: app/build/cloud-evidence/
+        if-no-files-found: ignore
+        retention-days: 14
+  store-tests:
+    name: Store engines host tests
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        repository: Droid-Deck/DroidDeck
+    - name: Verify backend and test source match
+      env:
+        XBOX_SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: test "$(git rev-parse 'HEAD^{tree}')" = "$XBOX_SOURCE_TREE"
+    - name: Rust toolchain
+      id: rust
+      run: echo "rustc=$(rustc -V | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+    - name: Cache cargo registry and the host test target
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          app/src/main/rust/stores/target
+        key: stores-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.rustc }}-${{ hashFiles('app/src/main/rust/stores/Cargo.lock')
+          }}-${{ hashFiles('app/src/main/rust/stores/src/**', 'app/src/main/rust/stores/Cargo.toml', 'app/src/main/rust/stores/build.rs')
+          }}
+        restore-keys: |
+          stores-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.rustc }}-${{ hashFiles('app/src/main/rust/stores/Cargo.lock') }}-
+          stores-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.rustc }}-
+    - name: Store engines host unit tests
+      timeout-minutes: 10
+      continue-on-error: true
+      run: |
+        set -o pipefail
+        cd app/src/main/rust/stores
+        cargo test --locked 2>&1 | tail -60
+  python-tests:
+    name: Python and native regression tests
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: 55362d68efbf5ba6ff8f302b914a1d37d0b73a06
+        fetch-depth: 0
+        sparse-checkout: |
+          /*
+          !/docs/releases/media/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+        repository: Droid-Deck/DroidDeck
+    - name: Verify backend and test source match
+      env:
+        XBOX_SOURCE_TREE: ${{ needs.source.outputs.tree-sha }}
+      run: test "$(git rev-parse 'HEAD^{tree}')" = "$XBOX_SOURCE_TREE"
+    - name: Install Python test dependencies
+      timeout-minutes: 7
+      run: bash tools/ci/install-ubuntu-packages.sh python3-yaml gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user libvulkan-dev
+        mesa-vulkan-drivers
+    - name: Resolve the pinned Android NDK
+      run: bash tools/ci/resolve-ndk.sh
+    - name: Check Quest tracking IPC
+      run: |
+        set -euo pipefail
+        NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+        VK_INCLUDE=$(ls -d "$NDK"/toolchains/llvm/prebuilt/*/sysroot/usr/include | head -1)
+        mkdir -p build/vr/include
+        cp -R "$VK_INCLUDE/vulkan" build/vr/include/
+        if [ -d "$VK_INCLUDE/vk_video" ]; then cp -R "$VK_INCLUDE/vk_video" build/vr/include/; fi
+        g++ -std=c++17 -Wall -Wextra -Werror -pthread tools/vr/tests/test_xr_tracking.cpp -o /tmp/test-xr-tracking
+        /tmp/test-xr-tracking
+        g++ -std=c++17 -Wall -Wextra -Werror tools/vr/tests/test_xr_touch.cpp -o /tmp/test-xr-touch
+        /tmp/test-xr-touch
+        g++ -std=c++17 -Wall -Wextra -Werror tools/vr/tests/test_pad_controller_config.cpp -o /tmp/test-pad-controller-config
+        /tmp/test-pad-controller-config
+        g++ -std=c++17 -Wall -Wextra -Werror -pthread tools/vr/tests/test_xr_vsync.cpp -o /tmp/test-xr-vsync
+        /tmp/test-xr-vsync
+        g++ -std=c++17 -Wall -Wextra -Werror -pthread tools/vr/tests/test_xr_frames.cpp -o /tmp/test-xr-frames
+        /tmp/test-xr-frames
+        cc -Itools/vr/third_party/wayland -c tools/vr/src/wayland_client_stub.c -o /tmp/test-wayland-stub.o
+        cc -Itools/vr/third_party/wayland -c app/src/main/cpp/waylandcomp/generated/xdg-shell-protocol.c -o /tmp/test-xdg-shell.o
+        g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-missing-field-initializers -pthread -Ibuild/vr/include \
+          -Itools/vr/third_party/wayland -Iapp/src/main/cpp/waylandcomp/generated \
+          tools/vr/tests/test_presenter_shutdown.cpp tools/vr/src/presenter.cpp /tmp/test-wayland-stub.o /tmp/test-xdg-shell.o \
+          -ldl -o /tmp/test-presenter-shutdown
+        timeout 10 /tmp/test-presenter-shutdown
+    - name: Steam import and game environment tests
+      run: bash tools/ci/run-python-tests.sh
+  checks:
+    name: Compile and test APK
+    needs:
+    - build
+    - python-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - name: Require compilation and every test job
+      env:
+        BUILD_RESULT: ${{ needs.build.result }}
+        PYTHON_RESULT: ${{ needs.python-tests.result }}
+      run: test "$BUILD_RESULT" = success && test "$PYTHON_RESULT" = success
+    if: ${{ !cancelled() }}

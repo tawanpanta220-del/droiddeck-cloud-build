@@ -5,8 +5,8 @@
   "files": [
     {
       "path": "app/build.gradle",
-      "size": 18940,
-      "sha256": "dc82d2d217e798d17fe4fb601430cd4300b338967ef2cab64b99e269732c0dac"
+      "size": 18559,
+      "sha256": "224d6bfb225f6463bdac935a17446506aba712deeb699a8787cc581e1100d000"
     },
     {
       "path": "app/src/chrome/AndroidManifest.xml",

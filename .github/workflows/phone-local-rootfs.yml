@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: phone-local-linux-dependencies
+  cancel-in-progress: true
+
 jobs:
   image:
     runs-on: ubuntu-24.04-arm
@@ -60,7 +64,9 @@ jobs:
           sudo mount -t proc proc "$root/proc"
           sudo mount -t sysfs -o ro sysfs "$root/sys"
           sudo mount --bind /dev "$root/dev"
+          sudo mount --make-rslave "$root/dev"
           sudo mount --bind /dev/pts "$root/dev/pts"
+          sudo mount --make-private "$root/dev/pts"
           sudo mv "$root/etc/resolv.conf" "$root/etc/resolv.conf.build-original"
           sudo cp /etc/resolv.conf "$root/etc/resolv.conf"
           printf '#!/bin/sh\nexit 101\n' | sudo tee "$root/usr/sbin/policy-rc.d" > /dev/null
@@ -96,12 +102,37 @@ jobs:
           date -u +%FT%TZ > evidence/built-at.txt
           sha256sum droiddeck-linux-deps-arm64.qcow2 > evidence/image-sha256.txt
           printf 'Ubuntu 24.04 ARM64 desktop libraries only. Google Chrome is not included.\n' > evidence/SCOPE.txt
+          split --bytes=300M --numeric-suffixes --suffix-length=2 droiddeck-linux-deps-arm64.qcow2 droiddeck-linux-deps-arm64.part-
+          sha256sum droiddeck-linux-deps-arm64.part-* > evidence/parts-sha256.txt
+          test -f droiddeck-linux-deps-arm64.part-00
+          test -f droiddeck-linux-deps-arm64.part-01
+          test -f droiddeck-linux-deps-arm64.part-02
+          test ! -f droiddeck-linux-deps-arm64.part-03
       - uses: actions/upload-artifact@v4
         with:
-          name: phone-local-linux-dependencies-arm64
-          path: |
-            image/droiddeck-linux-deps-arm64.qcow2
-            image/evidence/
+          name: phone-local-linux-evidence
+          path: image/evidence/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-local-linux-part-00
+          path: image/droiddeck-linux-deps-arm64.part-00
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-local-linux-part-01
+          path: image/droiddeck-linux-deps-arm64.part-01
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-local-linux-part-02
+          path: image/droiddeck-linux-deps-arm64.part-02
           retention-days: 1
           compression-level: 0
           if-no-files-found: error

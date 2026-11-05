@@ -81,6 +81,8 @@ display_owned = False
 proxy_pid = None
 desktop_pid = None
 vm_started = False
+guest_ready = False
+chrome_started = False
 vm_pid = None
 failure = None
 try:
@@ -145,6 +147,7 @@ try:
     setup = 'date -u -s @' + str(int(time.time())) + '\n' + (TOOLS / 'services.sh').read_text()
     setup += '\nrm -f /etc/sudoers.d/droiddeck-local\n'
     console(setup)
+    guest_ready = True
     stopped()
     authority = base64.b64encode((display.BASE / 'Xauthority').read_bytes()).decode()
     program = base64.b64encode((TOOLS / 'guest_chrome.py').read_bytes()).decode()
@@ -154,6 +157,7 @@ try:
     console(install)
     stopped()
     status('chrome_starting')
+    chrome_started = True
     console('python3 /root/chrome-preview.py start\n')
     status('running')
     while not STOP.exists():
@@ -177,10 +181,18 @@ except Exception as error:
 finally:
     if vm_started:
         status('stopping')
-        try:
-            console('python3 /root/chrome-preview.py stop\nsync\n', timeout=35)
-        except Exception:
-            pass
+        if chrome_started:
+            try:
+                subprocess.run([sys.executable, str(TOOLS / 'local_display.py'), 'close_browser'],
+                               capture_output=True, text=True, check=True, timeout=15)
+                console('python3 /root/chrome-preview.py stop\n', timeout=140)
+            except Exception:
+                failure = failure or 'Chrome shutdown could not be confirmed as clean'
+        if guest_ready:
+            try:
+                console('sync\n', timeout=60)
+            except Exception:
+                failure = failure or 'Linux disk synchronization could not be confirmed'
         try:
             qmp_quit()
         except Exception:

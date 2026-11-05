@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Diagnostic X11 display inside the phone; requires TigerVNC packages."""
 import argparse
+import ctypes
 import json
 import os
+import re
 import secrets
 import signal
 import socket
@@ -100,6 +102,57 @@ def desktop():
     return {'window_manager_pid': process.pid}
 
 
+def close_browser():
+    env = environment()
+    windows = subprocess.check_output(['xprop', '-root', '_NET_CLIENT_LIST'], env=env,
+                                      text=True, timeout=5)
+    selected = []
+    for window in re.findall(r'0x[0-9a-fA-F]+', windows)[:64]:
+        identity = subprocess.run(['xprop', '-id', window, 'WM_CLASS'], env=env,
+                                  text=True, capture_output=True, timeout=5)
+        if identity.returncode == 0 and '"google-chrome"' in identity.stdout.lower():
+            selected.append(int(window, 16))
+    if not selected:
+        return {'close_requested': 0}
+    class Data(ctypes.Union):
+        _fields_ = [('bytes', ctypes.c_char * 20), ('shorts', ctypes.c_short * 10),
+                    ('longs', ctypes.c_long * 5)]
+    class ClientMessage(ctypes.Structure):
+        _fields_ = [('type', ctypes.c_int), ('serial', ctypes.c_ulong),
+                    ('send_event', ctypes.c_int), ('display', ctypes.c_void_p),
+                    ('window', ctypes.c_ulong), ('message_type', ctypes.c_ulong),
+                    ('format', ctypes.c_int), ('data', Data)]
+    class Event(ctypes.Union):
+        _fields_ = [('client', ClientMessage), ('padding', ctypes.c_long * 24)]
+    library = ctypes.CDLL('libX11.so.6')
+    library.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    library.XOpenDisplay.restype = ctypes.c_void_p
+    library.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    library.XInternAtom.restype = ctypes.c_ulong
+    library.XSendEvent.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+                                  ctypes.c_long, ctypes.POINTER(Event)]
+    library.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    os.environ['XAUTHORITY'] = env['XAUTHORITY']
+    display = library.XOpenDisplay(b':2')
+    if not display:
+        raise RuntimeError('Could not open the private display for shutdown')
+    try:
+        protocol = library.XInternAtom(display, b'WM_PROTOCOLS', 0)
+        delete = library.XInternAtom(display, b'WM_DELETE_WINDOW', 0)
+        for window in selected:
+            event = Event()
+            event.client.type = 33
+            event.client.display = display
+            event.client.window = window
+            event.client.message_type = protocol
+            event.client.format = 32
+            event.client.data.longs[0] = delete
+            library.XSendEvent(display, window, 0, 0, ctypes.byref(event))
+    finally:
+        library.XCloseDisplay(display)
+    return {'close_requested': len(selected)}
+
+
 class X11Relay(socketserver.BaseRequestHandler):
     def handle(self):
         self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -166,6 +219,6 @@ def stop():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['start', 'window', 'desktop', 'proxy', 'stop'])
+    parser.add_argument('action', choices=['start', 'window', 'desktop', 'close_browser', 'proxy', 'stop'])
     args = parser.parse_args()
     print(json.dumps(globals()[args.action]()))

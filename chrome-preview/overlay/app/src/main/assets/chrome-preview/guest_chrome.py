@@ -50,13 +50,21 @@ def user():
 
 
 if options.action == 'stop':
+    deadline = time.monotonic() + 90
+    while browsers() and time.monotonic() < deadline:
+        time.sleep(0.2)
     for pid in browsers():
         os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + 20
     while browsers() and time.monotonic() < deadline:
         time.sleep(0.2)
-    print(json.dumps({'remaining_browser_pids': browsers()}))
-    raise SystemExit(0)
+    remaining = browsers()
+    preferences = profile / 'Default/Preferences'
+    exit_type = None
+    if preferences.is_file():
+        exit_type = json.loads(preferences.read_text()).get('profile', {}).get('exit_type')
+    print(json.dumps({'remaining_browser_pids': remaining, 'profile_exit_type': exit_type}))
+    raise SystemExit(1 if remaining or (exit_type is not None and exit_type != 'Normal') else 0)
 
 env = dict(os.environ, HOME=str(home), USER='droiddeck', LOGNAME='droiddeck',
            DISPLAY='10.0.2.2:2', XAUTHORITY=str(home / '.Xauthority-native'),

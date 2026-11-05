@@ -49,6 +49,12 @@ jobs:
           }
           trap cleanup EXIT
           sudo growpart "$loop" 1
+          if sudo e2fsck -f -p "${loop}p1" | tee evidence/filesystem-check.txt; then
+            :
+          else
+            fsck_rc=$?
+            test "$fsck_rc" -eq 1
+          fi
           sudo resize2fs "${loop}p1"
           sudo mount "${loop}p1" "$root"
           sudo mount -t proc proc "$root/proc"

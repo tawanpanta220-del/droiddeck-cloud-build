@@ -1,61 +1,74 @@
 # DroidDeck Cloud Build
 
-Build the upstream DroidDeck baseline APK using GitHub-hosted Ubuntu runners.
+Build the pinned upstream DroidDeck baseline using GitHub-hosted Ubuntu runners.
 
 - [Successful baseline run #1](https://github.com/tawanpanta220-del/droiddeck-cloud-build/actions/runs/41967966344)
-- [Latest workflow runs](https://github.com/tawanpanta220-del/droiddeck-cloud-build/actions/workflows/cloud-baseline.yml)
+- [Workflow runs](https://github.com/tawanpanta220-del/droiddeck-cloud-build/actions/workflows/cloud-baseline.yml)
 - [Pinned upstream source](https://github.com/Droid-Deck/DroidDeck/tree/55362d68efbf5ba6ff8f302b914a1d37d0b73a06)
+- [Mate 20 Pro device test](docs/chrome/MATE20PRO_TEST.md)
 
-The baseline uses upstream commit `55362d68efbf5ba6ff8f302b914a1d37d0b73a06`.
-This repository carries the build workflow; every job checks out that upstream source.
+This repository carries the build workflow. Every source job checks out upstream
+commit `55362d68efbf5ba6ff8f302b914a1d37d0b73a06`. The baseline retains the original
+DroidDeck launcher. No Chrome Edition APK or product installer has been completed.
 
-This is the baseline build milestone for the Google Chrome Desktop Edition project.
-The APK retains the original DroidDeck launcher. Chrome installation, launch,
-sandbox and Android device compatibility remain untested.
+## Verified build
 
-## Verified results
+Run #1 completed successfully on 2026-11-05; all seven jobs succeeded.
 
-Run #1 completed successfully on 2026-11-05. All seven jobs succeeded.
-
-- ARM64 DroidDeck 0.6.9 APK (version code 17), 91,056,198 bytes.
-- Android unit tests: 3,067 tests, 435 suites, no failures, errors or skipped cases.
-- Python tests: 1,616 cases including 49 skipped; no failures or errors.
-- Native regression checks succeeded. Rust host tests: 171 passed.
-- APK development test-key signatures verified for v1, v2 and v3.
-- Downloaded APK SHA-256 matches the checksum recorded by the build runner:
+- ARM64 DroidDeck 0.6.9 APK, version code 17, 91,056,198 bytes.
+- Android unit tests: 3,067 tests, 435 suites, no failures/errors/skips.
+- Python: 1,616 cases including 49 skipped; no failures/errors.
+- Native regression checks succeeded; Rust host tests: 171 passed.
+- Development test-key APK signatures verified for v1, v2 and v3.
+- APK SHA-256:
   `5d6fe0f034d09f9b2d2ec0aace64070ec38728cfc5cacd4ec016b4554bb8337d`.
 
-The APK manifest declares arm64-v8a, minSdk 26 and targetSdk 28.
-Those declarations do not establish device compatibility. No Android device
-installation or graphical runtime tests have been performed.
+The APK was subsequently installed on a HUAWEI Mate 20 Pro. Its installed APK
+checksum matches the downloaded and cloud-built APK.
 
-## Download artifacts
+## Device and Chrome gate
 
-Open the completed run's Actions page:
+The actual device reports Android 10/API 29, EMUI 12.0.0 and kernel 4.14.116.
+The Android frontend and ubuntu-r1-rc4 runtime install successfully.
+The upstream GPU classification remains unsupported (Mali-G76).
 
-- `droiddeck-baseline-apk`: APK signed with the upstream development test key.
-- `droiddeck-baseline-packs`: corresponding runtime add-on packs.
-- `droiddeck-baseline-evidence`: checksum, source identifiers and build/signature logs.
-- `unit-test-results`: Android JUnit XML and HTML reports.
+A fast-path statx defect was isolated with a stat/ls comparison. Disabling that
+performance path fixes those file operations. The Desktop guest reaches READY
+after compatibility adjustments, but its picture remains black on both ADB and
+the physical display. A first-frame event is not a visual-success criterion.
 
-APK and packs have 30-day retention; evidence and test reports have 14-day retention.
-This CI baseline downloads add-on packs at runtime rather than bundling them.
-The required PRoot and DirectAudio URLs responded successfully in the post-build
-check. The optional GOG Comet companion URL returned 404; the matching built pack
-is available in the packs artifact. Runtime downloads still require device tests.
+Google Chrome Stable ARM64 157.0.8103.38-1 was authenticated through Google's
+GPG-signed repository metadata and the package SHA-256. After diagnostic
+extraction into an app-private prefix, `--version` succeeds. A headless browser
+startup with sandbox aborts at the SUID sandbox ownership check; the helper is owned by
+Android UID rather than root. A user-namespace probe returns EINVAL.
 
-A change to `.github/workflows/cloud-baseline.yml` starts a build automatically.
-You can also select **Run workflow** on the workflow page.
+**Chrome Edition is BLOCKED on this tested device/runtime.** No `--no-sandbox`
+flag was used, no sandbox fallback was added, and no graphical Chrome/HTTPS
+success is claimed. The launcher/installer milestone waits for the required
+runtime and sandbox proof.
 
-## Chrome integration gate
+Temporary debugging and stay-awake settings were restored, preloads restored,
+and the Linux session stopped. See the linked device report for the exact scope.
 
-Before changing the launcher or adding the Chrome first-run installer, the project
-requires an actual Chrome window and sandbox evidence on an Android ARM64 device.
-The baseline retains upstream paths that can inject sandbox-disabling flags.
-A release must not default to `--no-sandbox`. Chrome release approval remains blocked
-pending those device checks.
+## Artifacts
 
-## Source attribution
+Download from the completed run's Actions page:
 
-The workflow is adapted from the upstream DroidDeck CI at the pinned revision.
+- `droiddeck-baseline-apk`: test-key APK.
+- `droiddeck-baseline-packs`: matching runtime add-on packs.
+- `droiddeck-baseline-evidence`: checksum, source and build/signature evidence.
+- `unit-test-results`: Android JUnit XML/HTML reports.
+
+APK and packs have 30-day retention; test/evidence artifacts have 14-day retention.
+This baseline downloads add-on packs at runtime. Required PRoot/DirectAudio
+downloads were exercised during the device runtime installation. The optional
+GOG Comet pack URL returned 404 in the earlier URL check; its matching built pack
+is retained in the packs artifact.
+
+A workflow-file change triggers a build. **Run workflow** also starts a build.
+
+## Attribution
+
+The workflow is adapted from upstream DroidDeck CI at the pinned revision.
 The upstream GPLv3 license text is included in `LICENSE`.

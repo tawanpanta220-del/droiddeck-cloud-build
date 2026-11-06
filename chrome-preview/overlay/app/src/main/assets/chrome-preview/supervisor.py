@@ -16,6 +16,8 @@ TOOLS = Path(__file__).resolve().parent
 STATE = Path(sys.argv[1])
 BASE = Path('/root/.cache/droiddeck-local-vm')
 STOP = STATE / 'stop'
+TCG_THREADS = 'multi'
+shutdown = {}
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 lock = (STATE / 'supervisor.lock').open('w')
 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -31,7 +33,10 @@ def atomic_file(path, data):
 
 def status(phase, error=None):
     atomic_file(STATE / 'status.json', json.dumps({'phase': phase, 'error': error,
-                                                 'updated_at': time.time()}).encode())
+                                                 'updated_at': time.time(),
+                                                 'configuration': {'tcg_threads': TCG_THREADS,
+                                                                   'vcpus': 2, 'memory_mib': 1024},
+                                                 'shutdown': shutdown}).encode())
     print('chrome-preview:' + phase, flush=True)
 
 
@@ -45,6 +50,12 @@ def listening(port):
         return connection.connect_ex(('127.0.0.1', port)) == 0
 
 
+class GuestCommandError(RuntimeError):
+    def __init__(self, exit_code):
+        self.exit_code = exit_code
+        super().__init__('Guest command exited with code ' + str(exit_code))
+
+
 def console(script, timeout=90):
     process = subprocess.run([sys.executable, str(TOOLS / 'console.py'), '--timeout', str(timeout)],
                              input=script, text=True, capture_output=True, timeout=timeout + 5)
@@ -56,8 +67,10 @@ def console(script, timeout=90):
         ) if message in process.stderr), 'transport error')
         raise RuntimeError('Guest console: ' + detail)
     result = json.loads(process.stdout)
-    if not result['complete'] or result['exit'] != 0:
-        raise RuntimeError('Guest command did not complete')
+    if not result['complete']:
+        raise TimeoutError('Guest command timed out')
+    if result['exit'] != 0:
+        raise GuestCommandError(result['exit'])
     return result
 
 
@@ -128,7 +141,7 @@ try:
     status('kernel')
     stopped()
     boot = subprocess.run([sys.executable, str(TOOLS / 'boot.py'), '--resume', '--cpu', 'cortex-a76',
-                           '--private-console', '--tcg-threads', 'single'],
+                           '--private-console', '--tcg-threads', TCG_THREADS],
                           capture_output=True, text=True, timeout=30)
     if boot.returncode:
         raise RuntimeError('Prepared virtual machine could not start')
@@ -183,15 +196,36 @@ finally:
         status('stopping')
         if chrome_started:
             try:
-                subprocess.run([sys.executable, str(TOOLS / 'local_display.py'), 'close_browser'],
-                               capture_output=True, text=True, check=True, timeout=15)
+                close = subprocess.run([sys.executable, str(TOOLS / 'local_display.py'), 'close_browser'],
+                                       capture_output=True, text=True, timeout=15)
+                shutdown['window_close_exit'] = close.returncode
+                if close.returncode != 0:
+                    failure = failure or 'Chrome window close request failed: exit ' + str(close.returncode)
+                else:
+                    requested = json.loads(close.stdout).get('close_requested')
+                    if isinstance(requested, int) and 0 <= requested <= 64:
+                        shutdown['windows_requested'] = requested
+            except Exception as error:
+                shutdown['window_close_error'] = type(error).__name__
+                failure = failure or 'Chrome window close request failed: ' + type(error).__name__
+            status('stopping', failure)
+            try:
                 console('python3 /root/chrome-preview.py stop\n', timeout=140)
-            except Exception:
-                failure = failure or 'Chrome shutdown could not be confirmed as clean'
+                shutdown['browser_exit_confirmed'] = True
+            except Exception as error:
+                shutdown['browser_exit_confirmed'] = False
+                shutdown['browser_exit_error'] = type(error).__name__
+                if isinstance(error, GuestCommandError):
+                    shutdown['browser_exit_code'] = error.exit_code
+                failure = failure or 'Chrome profile close confirmation failed: ' + type(error).__name__
+            status('stopping', failure)
         if guest_ready:
             try:
                 console('sync\n', timeout=60)
-            except Exception:
+                shutdown['disk_sync_confirmed'] = True
+            except Exception as error:
+                shutdown['disk_sync_confirmed'] = False
+                shutdown['disk_sync_error'] = type(error).__name__
                 failure = failure or 'Linux disk synchronization could not be confirmed'
         try:
             qmp_quit()

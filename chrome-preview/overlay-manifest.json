@@ -6,7 +6,7 @@
     {
       "path": "app/build.gradle",
       "size": 18559,
-      "sha256": "600251863cda6a99d22906ecb88d89c9b6b112585fce43d249ca6df6033a7722"
+      "sha256": "a14fb7fe21486fabff80ee12aaa9150cf51fc223732f4acd80ac4a9993f63096"
     },
     {
       "path": "app/src/chrome/AndroidManifest.xml",
@@ -45,8 +45,8 @@
     },
     {
       "path": "app/src/main/assets/chrome-preview/supervisor.py",
-      "size": 9702,
-      "sha256": "510f192a7e3eb97dc072d9ece59c2fdb6b488159ffb4a8327eb85ab1ab02c5df"
+      "size": 11536,
+      "sha256": "0a867ae3c165eb07e4c6e3a8ac282b65aad345b3e99ae364efa91dc5ef43ea34"
     },
     {
       "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromeDisplayActivity.kt",

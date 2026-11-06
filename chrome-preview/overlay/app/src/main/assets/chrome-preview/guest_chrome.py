@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -28,16 +29,26 @@ if helper.st_uid != 0 or helper.st_gid != 0 or helper.st_mode & 0o7777 != 0o4755
     raise RuntimeError('Chrome sandbox helper ownership is invalid')
 
 
+def is_profile_browser(executable, command_line, uid, profile_path):
+    if uid != 1000 or executable.removesuffix(' (deleted)') != '/opt/google/chrome/chrome':
+        return False
+    # Chromium can replace its NUL-separated argv with a single process title.
+    title = command_line.replace(b'\0', b' ')
+    if re.search(rb'(?:^|\s)--type(?:=|\s)', title):
+        return False
+    marker = rb'(?:^|\s)--user-data-dir(?:=|\s+)' + re.escape(str(profile_path).encode())
+    return re.search(marker + rb'(?:\s|$)', title) is not None
+
+
 def browsers():
     result = []
     for entry in Path('/proc').iterdir():
         if not entry.name.isdigit():
             continue
         try:
-            args = (entry / 'cmdline').read_bytes().split(b'\0')
-            if args[0] == b'/opt/google/chrome/chrome' and not any(a.startswith(b'--type=') for a in args):
-                if b'--user-data-dir=' + str(profile).encode() in args:
-                    result.append(int(entry.name))
+            if is_profile_browser(os.readlink(entry / 'exe'), (entry / 'cmdline').read_bytes(),
+                                  entry.stat().st_uid, profile):
+                result.append(int(entry.name))
         except OSError:
             continue
     return result
@@ -80,11 +91,6 @@ active = browsers()
 if options.action == 'start' and active:
     print(json.dumps({'existing_browser_pids': active}))
     raise SystemExit(0)
-if not active:
-    for name in ['SingletonLock', 'SingletonSocket', 'SingletonCookie']:
-        link = profile / name
-        if link.is_symlink():
-            link.unlink()
 with open('/root/chrome-preview.log', 'a') as log:
     process = subprocess.Popen(['dbus-run-session', '--', *args], env=env, preexec_fn=user,
                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,

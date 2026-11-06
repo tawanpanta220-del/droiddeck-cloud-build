@@ -13,7 +13,6 @@ import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
-import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import java.io.IOException
@@ -34,7 +33,7 @@ class ChromeDisplayView(context: Context) : View(context) {
     private var dragging = false
     private var twoFingers = false
     private var previousY = 0f
-    private var composing = ""
+    private var editor: ChromeInputConnection? = null
 
     init {
         isFocusable = true
@@ -100,7 +99,8 @@ class ChromeDisplayView(context: Context) : View(context) {
         connection = null
         pendingSocket = null
         pressed.clear()
-        composing = ""
+        editor?.discard()
+        editor = null
         dragging = false
         twoFingers = false
         synchronized(imageLock) { image = null }
@@ -197,34 +197,8 @@ class ChromeDisplayView(context: Context) : View(context) {
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
-        return object : BaseInputConnection(this, false) {
-            override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-                composing = ""
-                text?.let { typeText(it.toString()) }
-                return true
-            }
-            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-                composing = text?.toString().orEmpty()
-                return true
-            }
-            override fun finishComposingText(): Boolean {
-                val text = composing
-                composing = ""
-                typeText(text)
-                return true
-            }
-            override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                if (composing.isNotEmpty()) composing = composing.dropLast(min(beforeLength, composing.length))
-                else repeat(beforeLength.coerceIn(0, 100)) { tapKey(0xff08) }
-                repeat(afterLength.coerceIn(0, 100)) { tapKey(0xffff) }
-                return true
-            }
-            override fun sendKeyEvent(event: KeyEvent): Boolean = dispatchKeyEvent(event)
-            override fun performEditorAction(editorAction: Int): Boolean {
-                tapKey(0xff0d)
-                return true
-            }
-        }
+        editor?.discard()
+        return ChromeInputConnection(this, ::typeText, ::tapKey).also { editor = it }
     }
 
     fun typeText(text: String) {

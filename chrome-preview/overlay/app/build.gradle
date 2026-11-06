@@ -132,8 +132,8 @@ android {
         applicationId "com.droiddeck.launcher"
         minSdkVersion 26
         targetSdkVersion 28
-        versionCode chromeEdition ? 21 : 17
-        versionName chromeEdition ? "0.6.9-chrome-preview.4" : "0.6.9"
+        versionCode chromeEdition ? 22 : 17
+        versionName chromeEdition ? "0.6.9-chrome-preview.5" : "0.6.9"
         buildConfigField "String", "BUILD_LABEL", "\"${escapedBuildLabel}\""
         buildConfigField "String", "SOURCE_COMMIT", "\"${sourceCommit}\""
         buildConfigField "int", "PR_NUMBER", "${prNumber}"

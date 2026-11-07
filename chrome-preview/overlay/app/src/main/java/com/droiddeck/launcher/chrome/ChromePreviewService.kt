@@ -47,12 +47,13 @@ class ChromePreviewService : Service() {
         }
         if (worker != null) return START_NOT_STICKY
         cancelled.set(false)
+        val state = ChromePreviewRuntime.stateDir(this)
+        File(state, "stop").delete()
+        File(state, "vnc.password").delete()
+        File(state, "status.json").writeText(JSONObject().put("phase", "checking").toString())
         worker = Thread({
-            val state = ChromePreviewRuntime.stateDir(this)
             try {
-                File(state, "stop").delete()
-                File(state, "vnc.password").delete()
-                File(state, "status.json").writeText(JSONObject().put("phase", "checking").toString())
+                ChromePreviewRuntime.checkStartAllowed(this)
                 val tools = ChromePreviewRuntime.stageTools(this)
                 RootSpawner.start(this)
                 val exit = GuestCommand.run(this,

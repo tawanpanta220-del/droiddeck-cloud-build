@@ -26,7 +26,7 @@ class ChromeHomeActivity : Activity() {
         override fun run() {
             val current = ChromePreviewRuntime.state(this@ChromeHomeActivity).optString("phase", "stopped")
             phase.setText(phaseText(current))
-            if (openWhenAvailable && current !in setOf("failed", "stopped") &&
+            if (openWhenAvailable && current !in setOf("failed", "stopped", "stopping") &&
                 ChromePreviewRuntime.password(this@ChromeHomeActivity)?.also { it.fill('\u0000') } != null) {
                 openWhenAvailable = false
                 showDesktop()
@@ -60,7 +60,10 @@ class ChromeHomeActivity : Activity() {
         }
         button(R.string.chrome_preview_launch) { launch() }
         button(R.string.chrome_preview_desktop) { showDesktop() }
-        button(R.string.chrome_preview_stop) { ChromePreviewRuntime.stop(this) }
+        button(R.string.chrome_preview_stop) {
+            openWhenAvailable = false
+            ChromePreviewRuntime.stop(this)
+        }
         address = EditText(this).apply {
             setHint(R.string.chrome_preview_url_hint)
             setTextColor(Color.WHITE)
@@ -70,12 +73,14 @@ class ChromeHomeActivity : Activity() {
         }
         content.addView(address)
         button(R.string.chrome_preview_open_url) {
+            if (!canLaunch()) return@button
             runCatching {
                 ChromePreviewRuntime.enqueueUrl(this, address.text.toString().trim())
                 launch()
             }.onFailure { address.error = getString(R.string.chrome_preview_invalid_url) }
         }
         button(R.string.chrome_preview_settings) {
+            if (!canLaunch()) return@button
             ChromePreviewRuntime.enqueueUrl(this, "chrome://settings", internal = true)
             launch()
         }
@@ -86,7 +91,7 @@ class ChromeHomeActivity : Activity() {
         }
         button(R.string.chrome_preview_runtime_settings) {
             val current = ChromePreviewRuntime.state(this).optString("phase", "stopped")
-            if (current !in setOf("failed", "stopped")) {
+            if (current !in setOf("failed", "stopped", "stopping")) {
                 AlertDialog.Builder(this).setMessage(R.string.chrome_preview_stop_before_maintenance)
                     .setPositiveButton(android.R.string.ok, null).show()
             } else startActivity(Intent(this, FrontEndActivity::class.java))
@@ -94,16 +99,28 @@ class ChromeHomeActivity : Activity() {
         setContentView(ScrollView(this).apply { addView(content) })
     }
 
+    private fun canLaunch(): Boolean = runCatching {
+        ChromePreviewRuntime.checkStartAllowed(this)
+    }.onFailure {
+        AlertDialog.Builder(this).setMessage(when (it.message) {
+            "OTHER_SESSION_ACTIVE" -> R.string.chrome_preview_other_session
+            "PREVIEW_STOPPING" -> R.string.chrome_preview_stopping
+            else -> R.string.chrome_preview_start_failed
+        }).setPositiveButton(android.R.string.ok, null).show()
+    }.isSuccess
+
     private fun launch() {
         if (!ChromePreviewRuntime.installed(this)) {
             AlertDialog.Builder(this).setMessage(R.string.chrome_preview_prepared_required)
                 .setPositiveButton(android.R.string.ok, null).show()
             return
         }
+        if (!canLaunch()) return
         runCatching { ChromePreviewRuntime.start(this) }
             .onSuccess { openWhenAvailable = true }
             .onFailure {
-                AlertDialog.Builder(this).setMessage(R.string.chrome_preview_start_failed)
+                AlertDialog.Builder(this).setMessage(if (it.message == "OTHER_SESSION_ACTIVE")
+                    R.string.chrome_preview_other_session else R.string.chrome_preview_start_failed)
                     .setPositiveButton(android.R.string.ok, null).show()
             }
     }
@@ -125,7 +142,10 @@ class ChromeHomeActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private fun phaseText(value: String) = when (value) {
-        "checking", "display", "kernel", "services", "chrome_starting" -> R.string.chrome_preview_starting
+        "kernel" -> R.string.chrome_preview_kernel
+        "services" -> R.string.chrome_preview_services
+        "chrome_starting" -> R.string.chrome_preview_chrome_starting
+        "checking", "display" -> R.string.chrome_preview_starting
         "running" -> R.string.chrome_preview_running
         "stopping" -> R.string.chrome_preview_stopping
         "failed" -> R.string.chrome_preview_start_failed

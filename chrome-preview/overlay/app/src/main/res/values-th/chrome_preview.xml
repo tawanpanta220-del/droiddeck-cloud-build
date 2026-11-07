@@ -6,14 +6,14 @@
     <string name="chrome_preview_desktop">แสดง Desktop</string>
     <string name="chrome_preview_stop">ปิด Chrome</string>
     <string name="chrome_preview_starting">กำลังเริ่ม Linux และ Chrome… อาจใช้เวลาหลายนาที</string>
-    <string name="chrome_preview_running">เริ่มโปรเซส Chrome แล้ว หน้าต่างอาจใช้เวลาหลายนาทีก่อนแสดงผล</string>
+    <string name="chrome_preview_running">พบหน้าต่าง Chrome แล้ว รอหน้าเว็บโหลดเสร็จ</string>
     <string name="chrome_preview_stopping">กำลังปิด Chrome…</string>
     <string name="chrome_preview_stopped">Chrome หยุดอยู่</string>
     <string name="chrome_preview_start_failed">เริ่ม Chrome ไม่สำเร็จ ดูรายละเอียดที่การวินิจฉัย</string>
     <string name="chrome_preview_prepared_required">รุ่นทดสอบนี้ต้องใช้ Linux runtime ที่ตรวจสอบและเตรียมไว้สำหรับเครื่องนี้ ยังไม่รองรับการติดตั้ง runtime อัตโนมัติ</string>
     <string name="chrome_preview_url_hint">https://…</string>
     <string name="chrome_preview_open_url">เปิด URL</string>
-    <string name="chrome_preview_invalid_url">ระบุที่อยู่ HTTP หรือ HTTPS โดยไม่มีชื่อผู้ใช้หรือรหัสผ่านฝังใน URL</string>
+    <string name="chrome_preview_invalid_url">ใส่เว็บไซต์ เช่น example.com หรือที่อยู่ HTTP/HTTPS โดยไม่มีชื่อผู้ใช้หรือรหัสผ่านใน URL</string>
     <string name="chrome_preview_settings">การตั้งค่า Chrome</string>
     <string name="chrome_preview_diagnostics">การวินิจฉัย</string>
     <string name="chrome_preview_runtime_settings">การตั้งค่า Linux runtime</string>
@@ -24,4 +24,8 @@
     <string name="chrome_preview_retry">เชื่อมต่อใหม่</string>
     <string name="chrome_preview_display_failed">เชื่อมต่อจอไม่สำเร็จ แตะเชื่อมต่อใหม่</string>
     <string name="chrome_preview_display_unavailable">เปิด Chrome จากหน้าหลักก่อน</string>
+    <string name="chrome_preview_kernel">กำลังบูต Linux…</string>
+    <string name="chrome_preview_services">กำลังเตรียม Linux สำหรับ Chrome…</string>
+    <string name="chrome_preview_chrome_starting">กำลังเปิดหน้าต่าง Chrome…</string>
+    <string name="chrome_preview_other_session">มีเซสชัน Linux เดิมเปิดหรือพักอยู่ กรุณาปิดเซสชันเดิมก่อนเปิด Chrome Desktop</string>
 </resources>

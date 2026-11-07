@@ -4,9 +4,10 @@ import android.content.Context
 import android.content.Intent
 import com.droiddeck.launcher.runtime.LinuxRuntime
 import com.droiddeck.launcher.runtime.LinuxRuntimeInstaller
+import com.droiddeck.launcher.session.SessionState
+import com.droiddeck.launcher.session.SessionPhase
 import org.json.JSONObject
 import java.io.File
-import java.net.URI
 import java.util.UUID
 
 object ChromePreviewRuntime {
@@ -26,8 +27,14 @@ object ChromePreviewRuntime {
         if (file.isFile && file.length() in 1L..8L) file.readText().toCharArray() else null
     }.getOrNull()
 
-    fun start(context: Context) {
+    fun checkStartAllowed(context: Context) {
         check(!LinuxRuntimeInstaller.isBusy()) { "Runtime maintenance is in progress" }
+        check(!SessionState.running && SessionState.phase in setOf(SessionPhase.IDLE, SessionPhase.FAILED)) { "OTHER_SESSION_ACTIVE" }
+        check(state(context).optString("phase") != "stopping") { "PREVIEW_STOPPING" }
+    }
+
+    fun start(context: Context) {
+        checkStartAllowed(context)
         context.startForegroundService(Intent(context, ChromePreviewService::class.java))
     }
 
@@ -36,16 +43,13 @@ object ChromePreviewRuntime {
     }
 
     fun enqueueUrl(context: Context, address: String, internal: Boolean = false) {
-        if (!(internal && address in setOf("chrome://settings", "chrome://sandbox"))) {
-            val uri = URI(address)
-            require(uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.userInfo == null)
-            require(address.length <= 4096 && address.none { it.code < 32 })
-        }
+        val target = if (internal && address in setOf("chrome://settings", "chrome://sandbox")) address
+                     else ChromeAddress.normalize(address)
         val directory = File(stateDir(context), "urls").apply { mkdirs() }
         check((directory.listFiles()?.size ?: 0) < 20) { "Too many pending browser addresses" }
         val file = File(directory, UUID.randomUUID().toString() + ".json")
         val temporary = File(directory, file.name + ".tmp")
-        temporary.writeText(JSONObject().put("url", address).toString())
+        temporary.writeText(JSONObject().put("url", target).toString())
         check(temporary.renameTo(file)) { "Could not queue browser address" }
     }
 

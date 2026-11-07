@@ -416,9 +416,9 @@ jobs:
         git diff --exit-code -- app/src/main/cpp app/src/main/rust tools/linuxfs tools/packs
         echo 'DROIDDECK_BUILD_TREE_STATE=dirty' >> "$GITHUB_ENV"
         echo 'DROIDDECK_SOURCE_COMMIT=55362d68efbf5ba6ff8f302b914a1d37d0b73a06' >> "$GITHUB_ENV"
-    - name: Check Chrome console and browser identity regressions
+    - name: Check Chrome runtime lifecycle and cache regressions
       run: |
-        CHROME_PREVIEW_SUPERVISOR=app/src/main/assets/chrome-preview/supervisor.py CHROME_PREVIEW_GUEST=app/src/main/assets/chrome-preview/guest_chrome.py python3 -m unittest discover -s chrome_carrier/chrome-preview/tests -p 'test_preview_*.py' -v
+        CHROME_PREVIEW_SUPERVISOR=app/src/main/assets/chrome-preview/supervisor.py CHROME_PREVIEW_GUEST=app/src/main/assets/chrome-preview/guest_chrome.py CHROME_PREVIEW_SUPPORT=app/src/main/assets/chrome-preview/runtime_support.py python3 -m unittest discover -s chrome_carrier/chrome-preview/tests -p 'test_preview_*.py' -v
     - name: Build
       id: build
       env:

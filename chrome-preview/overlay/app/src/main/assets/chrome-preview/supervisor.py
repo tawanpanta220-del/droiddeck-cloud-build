@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from runtime_support import PhaseTimings, browser_command, initial_request, read_tail
 
 TOOLS = Path(__file__).resolve().parent
 STATE = Path(sys.argv[1])
@@ -18,6 +19,8 @@ BASE = Path('/root/.cache/droiddeck-local-vm')
 STOP = STATE / 'stop'
 TCG_THREADS = 'multi'
 shutdown = {}
+timings = PhaseTimings()
+startup = {}
 STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
 lock = (STATE / 'supervisor.lock').open('w')
 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -36,7 +39,8 @@ def status(phase, error=None):
                                                  'updated_at': time.time(),
                                                  'configuration': {'tcg_threads': TCG_THREADS,
                                                                    'vcpus': 2, 'memory_mib': 1024},
-                                                 'shutdown': shutdown}).encode())
+                                                 'shutdown': shutdown, 'startup': startup,
+                                                 'timings': timings.snapshot(phase)}).encode())
     print('chrome-preview:' + phase, flush=True)
 
 
@@ -100,6 +104,7 @@ vm_pid = None
 failure = None
 try:
     status('checking')
+    stopped()
     required = [BASE / 'minimal.qcow2', BASE / 'noble-server-cloudimg-arm64.img',
                 BASE / 'unpacked/verified.json', BASE / 'boot.json']
     helper = Path('/root/.cache/droiddeck-chrome-proof/bin/chrome-clean-exec-arm64')
@@ -145,12 +150,14 @@ try:
                           capture_output=True, text=True, timeout=30)
     if boot.returncode:
         raise RuntimeError('Prepared virtual machine could not start')
-    vm_pid = int(json.loads(boot.stdout)['pid'])
+    boot_result = json.loads(boot.stdout)
+    vm_pid = int(boot_result['pid'])
+    startup.update({key: boot_result[key] for key in ('kernel_cache_hit', 'kernel_bytes_written')})
     vm_started = True
     deadline = time.monotonic() + 600
     while True:
         stopped()
-        text = (BASE / 'minimal-serial.log').read_text(errors='replace')[-2000:]
+        text = read_tail(BASE / 'minimal-serial.log')
         if 'root@(none):' in text:
             break
         if time.monotonic() > deadline:
@@ -171,7 +178,18 @@ try:
     stopped()
     status('chrome_starting')
     chrome_started = True
-    console('python3 /root/chrome-preview.py start\n')
+    selected = initial_request(STATE / 'urls')
+    startup['initial_request_used'] = selected is not None
+    console(browser_command('start', selected[1] if selected else 'about:blank'))
+    if selected:
+        selected[0].unlink()
+    deadline = time.monotonic() + 600
+    while not display.browser_windows():
+        stopped()
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Chrome window did not appear')
+        time.sleep(1)
+    startup['chrome_window_detected'] = True
     status('running')
     while not STOP.exists():
         requests = sorted((STATE / 'urls').glob('*.json'))
@@ -179,12 +197,7 @@ try:
             stopped()
             value = json.loads(request.read_text())
             url = value['url']
-            # Pass addresses as JSON data rather than shell text.
-            data = base64.b64encode(json.dumps(url).encode()).decode()
-            script = "python3 - <<'PY'\nimport base64,json,subprocess\n"
-            script += "url=json.loads(base64.b64decode('" + data + "'))\n"
-            script += "subprocess.run(['python3','/root/chrome-preview.py','open','--url',url],check=True)\nPY\n"
-            console(script)
+            console(browser_command('open', url))
             request.unlink()
         time.sleep(0.3)
 except InterruptedError:

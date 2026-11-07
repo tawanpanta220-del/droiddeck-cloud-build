@@ -1,6 +1,9 @@
 package com.droiddeck.launcher.chrome
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.text.InputType
+import android.widget.EditText
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Bundle
@@ -24,6 +27,9 @@ class ChromeDisplayActivity : Activity() {
             val phase = ChromePreviewRuntime.state(this@ChromeDisplayActivity).optString("phase", "stopped")
             if (!connectionError) status.setText(when (phase) {
                 "running" -> R.string.chrome_preview_running
+                "kernel" -> R.string.chrome_preview_kernel
+                "services" -> R.string.chrome_preview_services
+                "chrome_starting" -> R.string.chrome_preview_chrome_starting
                 "failed" -> R.string.chrome_preview_start_failed
                 "stopping" -> R.string.chrome_preview_stopping
                 "stopped" -> R.string.chrome_preview_stopped
@@ -51,11 +57,7 @@ class ChromeDisplayActivity : Activity() {
             })
         }
         button(R.string.chrome_preview_back) { finish() }
-        button(R.string.chrome_preview_open_url) {
-            display.requestFocus()
-            display.shortcut('l'.code)
-            getSystemService(InputMethodManager::class.java).showSoftInput(display, InputMethodManager.SHOW_IMPLICIT)
-        }
+        button(R.string.chrome_preview_open_url) { showAddressDialog() }
         button(R.string.chrome_preview_keyboard) {
             display.requestFocus()
             @Suppress("DEPRECATION")
@@ -76,6 +78,35 @@ class ChromeDisplayActivity : Activity() {
             connectionError = true
             status.setText(R.string.chrome_preview_display_failed)
         }
+    }
+
+    private fun showAddressDialog() {
+        val address = EditText(this).apply {
+            hint = "example.com"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(R.string.chrome_preview_open_url)
+            .setView(address).setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.chrome_preview_open_url, null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val phase = ChromePreviewRuntime.state(this).optString("phase", "stopped")
+                if (phase in setOf("stopped", "failed", "stopping")) {
+                    address.error = getString(R.string.chrome_preview_display_unavailable)
+                } else runCatching {
+                    val target = address.text.toString().trim()
+                    ChromePreviewRuntime.enqueueUrl(this, target,
+                        internal = target in setOf("chrome://settings", "chrome://sandbox"))
+                }.onSuccess {
+                    getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(address.windowToken, 0)
+                    dialog.dismiss()
+                }.onFailure { address.error = getString(R.string.chrome_preview_invalid_url) }
+            }
+        }
+        address.requestFocus()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
     }
 
     private fun reconnect() {

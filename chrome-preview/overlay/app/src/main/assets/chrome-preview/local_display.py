@@ -102,7 +102,7 @@ def desktop():
     return {'window_manager_pid': process.pid}
 
 
-def close_browser():
+def browser_windows():
     env = environment()
     windows = subprocess.check_output(['xprop', '-root', '_NET_CLIENT_LIST'], env=env,
                                       text=True, timeout=5)
@@ -112,6 +112,12 @@ def close_browser():
                                   text=True, capture_output=True, timeout=5)
         if identity.returncode == 0 and '"google-chrome"' in identity.stdout.lower():
             selected.append(int(window, 16))
+    return selected
+
+
+def close_browser():
+    env = environment()
+    selected = browser_windows()
     if not selected:
         return {'close_requested': 0}
     class Data(ctypes.Union):

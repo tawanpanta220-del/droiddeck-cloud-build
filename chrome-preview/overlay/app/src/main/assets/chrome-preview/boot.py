@@ -1,5 +1,4 @@
 import argparse
-import gzip
 import hashlib
 import json
 import os
@@ -7,6 +6,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from runtime_support import prepare_kernel
 
 B = Path('/root/.cache/droiddeck-local-vm')
 parser = argparse.ArgumentParser()
@@ -36,10 +36,7 @@ u = B / 'unpacked'
 verified = json.loads((u / 'verified.json').read_text())
 for entry in verified['files']:
     assert hashlib.sha256((u / entry['name']).read_bytes()).hexdigest() == entry['sha256']
-kernel = (u / 'noble-server-cloudimg-arm64-vmlinuz-generic').read_bytes()
-if kernel[:2] == b'\x1f\x8b':
-    kernel = gzip.decompress(kernel)
-(u / 'Image').write_bytes(kernel)
+kernel_result = prepare_kernel(u / 'noble-server-cloudimg-arm64-vmlinuz-generic', u / 'Image')
 disk = B / 'minimal.qcow2'
 if disk.exists() and not resume:
     raise RuntimeError('Minimal disk already exists; do not overwrite it')
@@ -101,6 +98,6 @@ finally:
     assert preload.read_bytes() == original
 result = {'pid': process.pid, 'started_at': time.time(), 'argv': argv,
           'preload_restored': True, 'preload_sha256': hashlib.sha256(original).hexdigest(),
-          'clean_qemu': 'libblsession.so' not in maps.read_text()}
+          'clean_qemu': 'libblsession.so' not in maps.read_text(), **kernel_result}
 (B / 'minimal-boot.json').write_text(json.dumps(result, indent=2))
 print(json.dumps(result))

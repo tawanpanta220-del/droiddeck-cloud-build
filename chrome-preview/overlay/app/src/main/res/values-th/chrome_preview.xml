@@ -6,7 +6,7 @@
     <string name="chrome_preview_desktop">แสดง Desktop</string>
     <string name="chrome_preview_stop">ปิด Chrome</string>
     <string name="chrome_preview_starting">กำลังเริ่ม Linux และ Chrome… อาจใช้เวลาหลายนาที</string>
-    <string name="chrome_preview_running">พบหน้าต่าง Chrome แล้ว รอหน้าเว็บโหลดเสร็จ</string>
+    <string name="chrome_preview_running">เปิดหน้าต่าง Chrome แล้ว</string>
     <string name="chrome_preview_stopping">กำลังปิด Chrome…</string>
     <string name="chrome_preview_stopped">Chrome หยุดอยู่</string>
     <string name="chrome_preview_start_failed">เริ่ม Chrome ไม่สำเร็จ ดูรายละเอียดที่การวินิจฉัย</string>
@@ -26,6 +26,6 @@
     <string name="chrome_preview_display_unavailable">เปิด Chrome จากหน้าหลักก่อน</string>
     <string name="chrome_preview_kernel">กำลังบูต Linux…</string>
     <string name="chrome_preview_services">กำลังเตรียม Linux สำหรับ Chrome…</string>
-    <string name="chrome_preview_chrome_starting">กำลังเปิดหน้าต่าง Chrome…</string>
+    <string name="chrome_preview_chrome_starting">กำลังเตรียมหน้าเริ่มต้นของ Chrome…</string>
     <string name="chrome_preview_other_session">มีเซสชัน Linux เดิมเปิดหรือพักอยู่ กรุณาปิดเซสชันเดิมก่อนเปิด Chrome Desktop</string>
 </resources>

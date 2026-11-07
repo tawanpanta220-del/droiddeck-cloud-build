@@ -86,28 +86,56 @@ class RuntimeSupportTests(unittest.TestCase):
         self.assertNotIn('private', value)
         self.assertTrue(value.endswith('root@(none):/# '))
 
-    def test_first_url_is_selected_without_deleting_or_reordering_rest(self):
-        (self.root / '002.json').write_text(json.dumps({'url': 'https://example.com/two'}))
-        first = self.root / '001.json'
+    def test_oldest_url_is_selected_without_deleting_other_requests(self):
+        later = self.root / '001.json'
+        later.write_text(json.dumps({'url': 'https://example.com/two'}))
+        first = self.root / '002.json'
         first.write_text(json.dumps({'url': 'https://example.com/one'}))
-        self.assertEqual(support.initial_request(self.root), (first, 'https://example.com/one'))
+        os.utime(first, (1, 1))
+        self.assertEqual(support.next_request(self.root), (first, 'https://example.com/one'))
         self.assertTrue(first.exists())
+        self.assertTrue(later.exists())
 
     def test_no_initial_url_and_invalid_request(self):
-        self.assertIsNone(support.initial_request(self.root))
+        self.assertIsNone(support.next_request(self.root))
         (self.root / 'bad.json').write_text('{"url":42}')
-        with self.assertRaises(ValueError): support.initial_request(self.root)
+        with self.assertRaises(ValueError): support.next_request(self.root)
 
-    def test_browser_command_passes_url_as_data_to_single_launch(self):
+    def test_open_command_passes_url_as_data_to_guest(self):
         url = "https://example.com/?q=';touch /tmp/DO_NOT_RUN;#"
-        shell = support.browser_command('start', url)
+        shell = support.open_url_command(url)
         self.assertNotIn(url, shell)
         python = shell.split('\n', 1)[1].rsplit('\nPY', 1)[0]
         calls = []
         fake = types.SimpleNamespace(run=lambda argv, **kw: calls.append((argv, kw)))
         with patch.dict('sys.modules', {'subprocess': fake}): exec(python, {})
-        self.assertEqual(calls, [(['python3', '/root/chrome-preview.py', 'start', '--url', url], {'check': True})])
-        with self.assertRaises(ValueError): support.browser_command('delete', url)
+        self.assertEqual(calls, [(['python3', '/root/chrome-preview.py', 'open', '--url', url], {'check': True})])
+
+    def test_wait_for_start_page_after_window_appears(self):
+        display = types.SimpleNamespace(browser_windows=lambda: [1], start_page_rendered=lambda _: False)
+        with patch.object(display, 'start_page_rendered', side_effect=[False, False, True]) as rendered, \
+                patch.object(support.time, 'sleep') as sleep:
+            self.assertTrue(support.wait_for_chrome(display, lambda: None))
+        self.assertEqual(rendered.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_wait_falls_back_to_live_window_if_start_page_does_not_render(self):
+        display = types.SimpleNamespace(browser_windows=lambda: [1], start_page_rendered=lambda _: False)
+        with patch.object(support.time, 'monotonic', side_effect=[0, 0, 121]), patch.object(support.time, 'sleep'):
+            self.assertFalse(support.wait_for_chrome(display, lambda: None))
+
+    def test_wait_fails_when_no_chrome_window_appears(self):
+        display = types.SimpleNamespace(browser_windows=lambda: [])
+        with patch.object(support.time, 'monotonic', side_effect=[0, 0, 601]), patch.object(support.time, 'sleep'):
+            with self.assertRaisesRegex(TimeoutError, 'window did not appear'):
+                support.wait_for_chrome(display, lambda: None)
+
+    def test_stop_cancels_wait_before_any_url_is_dispatched(self):
+        def stop():
+            raise InterruptedError('Stop requested')
+
+        with self.assertRaises(InterruptedError):
+            support.wait_for_chrome(None, stop)
 
     def test_phase_timings_do_not_reset_same_phase(self):
         tick = [10.0]

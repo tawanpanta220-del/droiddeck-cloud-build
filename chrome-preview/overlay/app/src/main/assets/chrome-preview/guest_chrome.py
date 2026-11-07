@@ -84,13 +84,23 @@ for key in ['LD_PRELOAD', 'LD_AUDIT', 'ELECTRON_DISABLE_SANDBOX', 'CHROME_DEVEL_
             'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS']:
     env.pop(key, None)
 
+target = options.url
+if options.action == 'start':
+    active = browsers()
+    if active:
+        print(json.dumps({'existing_browser_pids': active}))
+        raise SystemExit(0)
+    start_page = Path('/run/droiddeck-chrome-start.html')
+    start_page.write_text('<!doctype html><meta charset="utf-8">'
+                          '<title>DroidDeck Chrome Ready</title>'
+                          '<h1>Chrome Desktop</h1><p>Open a URL from the DroidDeck toolbar.</p>',
+                          encoding='utf-8')
+    start_page.chmod(0o644)
+    target = start_page.as_uri()
+
 args = ['/opt/google/chrome/chrome', '--ozone-platform=x11', '--disable-gpu',
         '--no-first-run', '--no-default-browser-check', '--disable-background-mode',
-        '--user-data-dir=' + str(profile), '--new-window' if options.action == 'start' else '--new-tab', options.url]
-active = browsers()
-if options.action == 'start' and active:
-    print(json.dumps({'existing_browser_pids': active}))
-    raise SystemExit(0)
+        '--user-data-dir=' + str(profile), '--new-window' if options.action == 'start' else '--new-tab', target]
 with open('/root/chrome-preview.log', 'a') as log:
     process = subprocess.Popen(['dbus-run-session', '--', *args], env=env, preexec_fn=user,
                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,

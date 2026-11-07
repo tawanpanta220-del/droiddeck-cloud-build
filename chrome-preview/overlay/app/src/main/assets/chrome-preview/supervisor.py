@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from runtime_support import PhaseTimings, browser_command, initial_request, read_tail
+from runtime_support import PhaseTimings, next_request, open_url_command, read_tail, wait_for_chrome
 
 TOOLS = Path(__file__).resolve().parent
 STATE = Path(sys.argv[1])
@@ -178,35 +178,29 @@ try:
     stopped()
     status('chrome_starting')
     chrome_started = True
-    selected = initial_request(STATE / 'urls')
-    startup['initial_request_used'] = selected is not None
-    console(browser_command('start', selected[1] if selected else 'about:blank'))
-    if selected:
-        selected[0].unlink()
-    deadline = time.monotonic() + 600
-    while not display.browser_windows():
-        stopped()
-        if time.monotonic() >= deadline:
-            raise TimeoutError('Chrome window did not appear')
-        time.sleep(1)
+    console('python3 /root/chrome-preview.py start\n')
+    startup['chrome_start_page_rendered'] = wait_for_chrome(display, stopped)
     startup['chrome_window_detected'] = True
     status('running')
     while not STOP.exists():
-        requests = sorted((STATE / 'urls').glob('*.json'))
-        for request in requests:
-            stopped()
-            value = json.loads(request.read_text())
-            url = value['url']
-            console(browser_command('open', url))
-            request.unlink()
-        time.sleep(0.3)
+        request = next_request(STATE / 'urls')
+        if request is None:
+            time.sleep(0.3)
+            continue
+        stopped()
+        path, url = request
+        console(open_url_command(url))
+        path.unlink()
+        if 'first_url_dispatched' not in startup:
+            startup['first_url_dispatched'] = True
+            status('running')
 except InterruptedError:
     pass
 except Exception as error:
     failure = 'PREPARED_RUNTIME_REQUIRED' if str(error) == 'PREPARED_RUNTIME_REQUIRED' else type(error).__name__ + ': ' + str(error)
 finally:
+    status('stopping')
     if vm_started:
-        status('stopping')
         if chrome_started:
             try:
                 close = subprocess.run([sys.executable, str(TOOLS / 'local_display.py'), 'close_browser'],
@@ -280,4 +274,6 @@ finally:
             except OSError:
                 pass
     (STATE / 'vnc.password').unlink(missing_ok=True)
+    for request in (STATE / 'urls').glob('*.json'):
+        request.unlink(missing_ok=True)
     status('failed' if failure else 'stopped', failure)

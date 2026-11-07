@@ -115,6 +115,16 @@ def browser_windows():
     return selected
 
 
+def start_page_rendered(windows):
+    env = environment()
+    for window in windows:
+        title = subprocess.run(['xprop', '-id', hex(window), '_NET_WM_NAME'], env=env,
+                               text=True, capture_output=True, timeout=5)
+        if title.returncode == 0 and re.search(r'= "DroidDeck Chrome Ready(?=[" ])', title.stdout):
+            return True
+    return False
+
+
 def close_browser():
     env = environment()
     selected = browser_windows()

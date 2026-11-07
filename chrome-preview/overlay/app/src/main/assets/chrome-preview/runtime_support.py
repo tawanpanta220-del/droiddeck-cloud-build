@@ -46,8 +46,8 @@ def read_tail(path, limit=4096):
         return stream.read(limit).decode(errors='replace')
 
 
-def initial_request(directory):
-    requests = sorted(directory.glob('*.json'))
+def next_request(directory):
+    requests = sorted(directory.glob('*.json'), key=lambda path: (path.stat().st_mtime_ns, path.name))
     if not requests:
         return None
     path = requests[0]
@@ -57,14 +57,30 @@ def initial_request(directory):
     return path, value['url']
 
 
-def browser_command(action, url):
-    if action not in ('start', 'open'):
-        raise ValueError('Invalid browser action')
+def open_url_command(url):
     encoded = base64.b64encode(json.dumps(url).encode()).decode()
     return ("python3 - <<'PY'\nimport base64,json,subprocess\n"
             "url=json.loads(base64.b64decode('" + encoded + "'))\n"
-            "subprocess.run(['python3','/root/chrome-preview.py','" + action +
-            "','--url',url],check=True)\nPY\n")
+            "subprocess.run(['python3','/root/chrome-preview.py','open','--url',url],check=True)\nPY\n")
+
+
+def wait_for_chrome(display, check_stop, window_timeout=600, page_timeout=120):
+    window_deadline = time.monotonic() + window_timeout
+    page_deadline = None
+    while True:
+        check_stop()
+        windows = display.browser_windows()
+        now = time.monotonic()
+        if windows:
+            if display.start_page_rendered(windows):
+                return True
+            if page_deadline is None:
+                page_deadline = now + page_timeout
+            if now >= page_deadline:
+                return False
+        elif now >= window_deadline:
+            raise TimeoutError('Chrome window did not appear')
+        time.sleep(1)
 
 
 class PhaseTimings:

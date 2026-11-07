@@ -6,7 +6,7 @@
     {
       "path": "app/build.gradle",
       "size": 18559,
-      "sha256": "de401807d663012a7eff5d34322ea383fa3ef4ec3dfffa0810d0fa90aff7cf60"
+      "sha256": "67af2bbbf738ce9d5b12c7c8ff89f89e7f0547b94339d453bbd4456fe533f02d"
     },
     {
       "path": "app/src/chrome/AndroidManifest.xml",
@@ -30,18 +30,18 @@
     },
     {
       "path": "app/src/main/assets/chrome-preview/guest_chrome.py",
-      "size": 4117,
-      "sha256": "86d522e785471db9e262c37267bfdfe7dcd0f24623f15e627f4a3689372227c0"
+      "size": 4543,
+      "sha256": "3653b168103360ef0308278f94889c960b85ab34b6d2155e9ee52f7deccde6f9"
     },
     {
       "path": "app/src/main/assets/chrome-preview/local_display.py",
-      "size": 9907,
-      "sha256": "68fa78ae30e1288abf9549028c3f9f5b54368bb075d1f86743b2312d9bee604d"
+      "size": 10296,
+      "sha256": "4274527b1566d68a0713da4d88242524320cda9307c56da22378757df18c0a2d"
     },
     {
       "path": "app/src/main/assets/chrome-preview/runtime_support.py",
-      "size": 3587,
-      "sha256": "d277d7daae5a23efc712916b126ebae0c782922506d2afb7d06b35a26206c5e6"
+      "size": 4172,
+      "sha256": "fe4bac00858e4bf596aa928a8a402bd3650b4707444862feea7bd4fba8238410"
     },
     {
       "path": "app/src/main/assets/chrome-preview/services.sh",
@@ -50,8 +50,8 @@
     },
     {
       "path": "app/src/main/assets/chrome-preview/supervisor.py",
-      "size": 11952,
-      "sha256": "bbce664b530a877b900a347f9df901fd0591e3e98244cdbd242291a491e1a989"
+      "size": 11793,
+      "sha256": "fbfe6ea32d2b4b406059a9fd23a5654b0d068b414f09db3a8b44af581aefbbf6"
     },
     {
       "path": "app/src/main/java/com/droiddeck/launcher/chrome/ChromeAddress.java",
@@ -95,13 +95,13 @@
     },
     {
       "path": "app/src/main/res/values-th/chrome_preview.xml",
-      "size": 3677,
-      "sha256": "7dd8bb4259de3b12470154440774d3cf68b8f572665dd4fb36e6ec09f685a253"
+      "size": 3652,
+      "sha256": "8dc51af3950a5f6f23af5f4f0ca4ef073bb924414141a76883be4772e49bc7b3"
     },
     {
       "path": "app/src/main/res/values/chrome_preview.xml",
-      "size": 2560,
-      "sha256": "3b8f3ac5577aa0bc0483460e5f4b847fb9d1bdbd614c416087411dfbd5b677ef"
+      "size": 2535,
+      "sha256": "5f29950cb1b4c7c0e1bbc106f08790540780cdab8d25503473c79618b4e7e010"
     },
     {
       "path": "app/src/test/java/com/droiddeck/launcher/chrome/ChromeAddressTest.java",

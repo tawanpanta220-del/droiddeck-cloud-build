@@ -6,7 +6,7 @@
     <string name="chrome_preview_desktop">Show desktop</string>
     <string name="chrome_preview_stop">Stop Chrome</string>
     <string name="chrome_preview_starting">Starting Linux and Chrome… This can take several minutes.</string>
-    <string name="chrome_preview_running">Chrome window detected; waiting for the page to load</string>
+    <string name="chrome_preview_running">Chrome window is open</string>
     <string name="chrome_preview_stopping">Stopping Chrome…</string>
     <string name="chrome_preview_stopped">Chrome is stopped</string>
     <string name="chrome_preview_start_failed">Chrome could not start. See Diagnostics.</string>
@@ -26,6 +26,6 @@
     <string name="chrome_preview_display_unavailable">Start Chrome from the launcher first.</string>
     <string name="chrome_preview_kernel">Booting Linux…</string>
     <string name="chrome_preview_services">Preparing Linux for Chrome…</string>
-    <string name="chrome_preview_chrome_starting">Opening the Chrome window…</string>
+    <string name="chrome_preview_chrome_starting">Preparing the Chrome start page…</string>
     <string name="chrome_preview_other_session">Another Linux session is running or suspended. Stop that session before opening Chrome Desktop.</string>
 </resources>

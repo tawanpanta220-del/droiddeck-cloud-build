@@ -45,5 +45,17 @@ class WindowDetectionTests(unittest.TestCase):
             '0x200': (0, 'WM_CLASS = "not-google-chrome", "other"'),
         }), [])
 
+    def test_managed_chrome_window_requires_rendered_start_page_title(self):
+        tree = ast.parse(SOURCE.read_text())
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'start_page_rendered')
+        title = types.SimpleNamespace(returncode=0, stdout='_NET_WM_NAME(UTF8_STRING) = "Google Chrome"')
+        scope = {'re': re, 'environment': lambda: {}, 'subprocess': types.SimpleNamespace(run=lambda *a, **kw: title)}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(SOURCE), 'exec'), scope)
+        self.assertFalse(scope['start_page_rendered']([1]))
+        title.stdout = '_NET_WM_NAME(UTF8_STRING) = "DroidDeck Chrome Ready - Google Chrome"'
+        self.assertTrue(scope['start_page_rendered']([1]))
+        title.returncode = 1
+        self.assertFalse(scope['start_page_rendered']([1]))
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

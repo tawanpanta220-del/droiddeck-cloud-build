@@ -1,5 +1,5 @@
 name: Apple Music for the EX5 head unit
-run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, keep ${{ inputs.keep_abis }})
+run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, ${{ inputs.profile }})
 'on':
   workflow_dispatch:
     inputs:
@@ -24,6 +24,20 @@ run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, keep ${{ inputs.keep_abi
         description: Zeekr MediaCenter bridge (only useful on Zeekr units, not needed on Geely EX5)
         type: boolean
         default: false
+      profile:
+        description: >-
+          Hook profile. full = upstream Apple Music preset (root, emulator, network, SIM bypass).
+          lean = drop the root bypass (hooks every File.exists call) and rounded corners.
+          minimal = display/UI only, no compatibility bypasses.
+        type: choice
+        options: [full, lean, minimal]
+        default: full
+      extra_options:
+        description: >-
+          Optional overrides, comma-separated key=true/false, e.g. "networkBypass=false,backButton=false".
+          Keys: rootBypass emulatorBypass networkBypass simReady roundedCorners backButton forceOrientation fullscreen debug
+        type: string
+        default: ''
       allow_unknown_signer:
         description: Accept an input APK that is not signed by Apple (not recommended)
         type: boolean
@@ -171,8 +185,37 @@ jobs:
         DPI: ${{ inputs.dpi }}
         KEEP_ABIS: ${{ inputs.keep_abis }}
         MEDIA_BRIDGE: ${{ inputs.media_bridge }}
+        PROFILE: ${{ inputs.profile }}
+        EXTRA_OPTIONS: ${{ inputs.extra_options }}
       run: |
         set -euo pipefail
+        # Hook categories: every enabled one adds Pine trampolines on framework methods.
+        declare -A opt=([rootBypass]=true [emulatorBypass]=true [networkBypass]=true [simReady]=true
+                        [roundedCorners]=true [backButton]=true [forceOrientation]=true
+                        [fullscreen]=false [debug]=false)
+        case "$PROFILE" in
+          full) ;;
+          lean) opt[rootBypass]=false; opt[roundedCorners]=false ;;
+          minimal) opt[rootBypass]=false; opt[emulatorBypass]=false; opt[networkBypass]=false
+                   opt[simReady]=false; opt[roundedCorners]=false ;;
+          *) echo "::error::Unknown profile $PROFILE"; exit 1 ;;
+        esac
+        if [ -n "$EXTRA_OPTIONS" ]; then
+          IFS=',' read -ra pairs <<< "$EXTRA_OPTIONS"
+          for pair in "${pairs[@]}"; do
+            pair=$(echo "$pair" | xargs)
+            key=${pair%%=*}; val=${pair#*=}
+            if [ -z "${opt[$key]+x}" ] || { [ "$val" != true ] && [ "$val" != false ]; }; then
+              echo "::error::Invalid extra option '$pair' (use key=true or key=false with a listed key)"
+              exit 1
+            fi
+            opt[$key]=$val
+          done
+        fi
+        opt_args=()
+        for key in "${!opt[@]}"; do opt_args+=("-O$key=${opt[$key]}"); done
+        echo "Hook options: $(printf '%s ' "${opt_args[@]}" | tr ' ' '\n' | sort | tr '\n' ' ')"
+        printf '%s\n' "${opt_args[@]}" | sort > out-options.txt
         if ! [[ "$DPI" =~ ^[0-9]+$ ]] || [ "$DPI" -lt 120 ] || [ "$DPI" -gt 640 ]; then
           echo "::error::dpi must be a number from 120 to 640"
           exit 1
@@ -183,6 +226,7 @@ jobs:
           --exclusive -e "DHU adapter" \
           -OmetricsDpi="$DPI" -OconfigDpi="$DPI" \
           -OmediaBridge="$MEDIA_BRIDGE" \
+          "${opt_args[@]}" \
           --striplibs "$KEEP_ABIS" \
           --unsigned \
           -t work/tmp \
@@ -209,6 +253,7 @@ jobs:
         DPI: ${{ inputs.dpi }}
         KEEP_ABIS: ${{ inputs.keep_abis }}
         MEDIA_BRIDGE: ${{ inputs.media_bridge }}
+        PROFILE: ${{ inputs.profile }}
       run: |
         set -euo pipefail
         if [ -n "${KEYSTORE_B64:-}" ]; then
@@ -223,12 +268,13 @@ jobs:
           signing="one-off key (uninstall before the next build)"
         fi
         "$BUILD_TOOLS/zipalign" -f -P 16 4 work/patched-unsigned.apk work/aligned.apk
-        name="AppleMusic-${APP_VERSION}-DHU.apk"
+        name="AppleMusic-${APP_VERSION}-DHU-${PROFILE}.apk"
         "$BUILD_TOOLS/apksigner" sign --ks work/sign.p12 --ks-pass "pass:$pass" --out "out/$name" work/aligned.apk
         "$BUILD_TOOLS/apksigner" verify --print-certs "out/$name" > out/signature.txt
         test "$("$BUILD_TOOLS/aapt2" dump packagename "out/$name")" = "$APPLE_MUSIC_PACKAGE"
         (cd out && sha256sum "$name" > "$name.sha256")
         cp tools.sha256 out/tools.sha256
+        mv out-options.txt out/hook-options.txt
         in_size=$(stat -c %s "$INPUT_FILE"); out_size=$(stat -c %s "out/$name")
         {
           echo "### Apple Music $APP_VERSION for the head unit"
@@ -238,6 +284,7 @@ jobs:
           echo "- Output SHA-256: \`$(cut -d' ' -f1 "out/$name.sha256")\`"
           echo "- Patch: zeekr-adapt \`$PATCHES_TAG\` DHU adapter, $DPI dpi, media bridge $MEDIA_BRIDGE"
           echo "- Kept native ABIs: $KEEP_ABIS"
+          echo "- Hook profile: $PROFILE ($(tr '\n' ' ' < out/hook-options.txt))"
           echo "- Signing: $signing"
           echo
           echo "For personal use on your own head unit. Do not redistribute the patched app."

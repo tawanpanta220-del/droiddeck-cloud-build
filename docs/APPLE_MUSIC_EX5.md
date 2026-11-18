@@ -38,3 +38,32 @@ Workflow `.github/workflows/apple-music-dhu.yml` รับ Apple Music ตัว
 - Lossless เปิดในแอป: Settings → Audio Quality → Lossless Audio
 - แพตช์นี้ทำมาสำหรับ Zeekr DHU ยังไม่มีผลทดสอบบน Geely EX5 (Flyme Auto)
   ถ้าตัวหนังสือเล็กหรือใหญ่ไป ให้ปรับ `dpi` หรือกดค้างที่ปุ่มลอยในแอปเพื่อปรับ DPI
+
+## ถ้าแอปช้า
+
+สาเหตุหลักมี 2 อย่าง
+
+1. **แอปที่ลงเองยังไม่ถูก compile ล่วงหน้า (AOT)**: แอปจาก Play Store ได้ profile ไปช่วย compile ตอนติดตั้ง
+   แต่ APK ที่ลงเองเริ่มด้วยโหมด interpreter/JIT และจอรถอาจไม่เคยเข้าโหมดว่างพร้อมชาร์จที่ระบบใช้ compile ภายหลัง
+   ถ้าเปิด ADB บนจอได้ ให้สั่ง compile เต็มครั้งเดียว (ใช้เวลา 1–3 นาที):
+   ```
+   adb shell cmd package compile -m speed -f com.apple.android.music
+   ```
+2. **Hook ของ DHU adapter**: แต่ละ category ใส่ Pine hook ไว้บน method ของระบบที่ถูกเรียกบ่อยมาก
+   | Category | Hook บนเส้นทางที่ถูกเรียกบ่อย | จำเป็นบน EX5 ไหม |
+   |---|---|---|
+   | Display (เปิดเสมอ) | `Resources.getDisplayMetrics`, `Resources.getConfiguration`, `View.onAttachedToWindow`, `View.setPaddingRelative` | จำเป็น (ทำให้ UI อ่านได้) |
+   | Root bypass | `File.exists` (ทุกไฟล์ที่แอปเช็ก), `Runtime.exec`, PackageManager | น่าจะไม่จำเป็นถ้าจอไม่ได้ root |
+   | Emulator bypass | `SystemProperties.get`, `Build.*` | ไม่แน่ใจ ต้องลอง |
+   | Network bypass | `NetworkCapabilities.hasCapability/hasTransport` | ต้องใช้ถ้าแอปขึ้นว่า offline |
+   | SIM ready | `SharedPreferences.getBoolean` (ทุก pref ที่อ่าน) | ต้องใช้ถ้าแอปไม่ยอมสตรีมผ่าน "cellular" |
+   | Rounded corners | clip ทั้งหน้าจอทุก frame | ไม่จำเป็น |
+
+   เลือก `profile` ตอน Run workflow:
+   - `full`: preset เดิมของ Apple Music
+   - `lean`: ปิด root bypass และ rounded corners (แนะนำให้ลองก่อน)
+   - `minimal`: เหลือแค่ Display ถ้าแอปขึ้น offline หรือเล่นไม่ได้ ให้เปิดกลับทีละตัวด้วย `extra_options`
+     เช่น `networkBypass=true` หรือ `networkBypass=true,simReady=true`
+
+ไฟล์ `hook-options.txt` ใน artifact บอกว่าแต่ละ build เปิดอะไรไว้บ้าง
+ข้อมูลที่ไม่จำเป็นอื่นๆ เช่น resource ทุก density (ldpi–xxxhdpi) ที่รวมมาจาก split ทำให้ไฟล์ใหญ่ขึ้น แต่ไม่ทำให้ช้าลง

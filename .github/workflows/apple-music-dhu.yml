@@ -214,13 +214,13 @@ jobs:
         if [ -n "${KEYSTORE_B64:-}" ]; then
           echo "$KEYSTORE_B64" | base64 -d > work/sign.p12
           pass="$KEYSTORE_PASSWORD"
-          echo "SIGNING=repository secret (stable key, updates install over each other)" >> "$GITHUB_ENV"
+          signing="repository secret (stable key, updates install over each other)"
         else
           pass=$(openssl rand -hex 16)
           keytool -genkeypair -keystore work/sign.p12 -storetype PKCS12 -storepass "$pass" \
             -alias dhu -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=DHU Adapter" >/dev/null
           echo "::warning::No APPLE_MUSIC_DHU_KEYSTORE_B64 secret: signed with a one-off key, uninstall before installing the next build."
-          echo "SIGNING=one-off key (uninstall before the next build)" >> "$GITHUB_ENV"
+          signing="one-off key (uninstall before the next build)"
         fi
         "$BUILD_TOOLS/zipalign" -f -P 16 4 work/patched-unsigned.apk work/aligned.apk
         name="AppleMusic-${APP_VERSION}-DHU.apk"
@@ -238,7 +238,7 @@ jobs:
           echo "- Output SHA-256: \`$(cut -d' ' -f1 "out/$name.sha256")\`"
           echo "- Patch: zeekr-adapt \`$PATCHES_TAG\` DHU adapter, $DPI dpi, media bridge $MEDIA_BRIDGE"
           echo "- Kept native ABIs: $KEEP_ABIS"
-          echo "- Signing: $SIGNING"
+          echo "- Signing: $signing"
           echo
           echo "For personal use on your own head unit. Do not redistribute the patched app."
         } >> "$GITHUB_STEP_SUMMARY"

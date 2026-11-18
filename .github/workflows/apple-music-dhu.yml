@@ -13,9 +13,8 @@ run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, keep ${{ inputs.keep_abi
         type: string
         default: ''
       dpi:
-        description: UI density for the head unit (bigger = larger UI)
-        type: choice
-        options: ['200', '240', '280', '320', '360']
+        description: UI density for the head unit, 120-640 (bigger = larger UI; 200/240/280/320/360 are common)
+        type: string
         default: '280'
       keep_abis:
         description: Native library architectures to keep (EX5 head unit is arm64)
@@ -66,7 +65,18 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p work/download
-        curl -fL --retry 3 --proto '=https' -o work/download/input.bin "$APK_URL"
+        url="$APK_URL"
+        # Google Drive share links (…/file/d/<id>/view or ?id=<id>) -> direct download.
+        drive_id=$(printf '%s' "$url" | sed -nE 's#^https://drive\.google\.com/(file/d/([A-Za-z0-9_-]+).*|.*[?&]id=([A-Za-z0-9_-]+).*)$#\2\3#p')
+        if [ -n "$drive_id" ]; then
+          url="https://drive.usercontent.google.com/download?id=${drive_id}&export=download&confirm=t"
+          echo "Google Drive file id: $drive_id"
+        fi
+        curl -fL --retry 3 --proto '=https' -o work/download/input.bin "$url"
+        if ! python3 -I -c 'import sys,zipfile; sys.exit(0 if zipfile.is_zipfile(sys.argv[1]) else 1)' work/download/input.bin; then
+          echo "::error::The download is not an APK/zip ($(file -b work/download/input.bin | cut -c1-80)). Share the file as 'Anyone with the link' and use a direct link."
+          exit 1
+        fi
         actual=$(sha256sum work/download/input.bin | cut -d' ' -f1)
         echo "Input SHA-256: $actual"
         echo "INPUT_SHA256=$actual" >> "$GITHUB_ENV"
@@ -155,6 +165,10 @@ jobs:
         MEDIA_BRIDGE: ${{ inputs.media_bridge }}
       run: |
         set -euo pipefail
+        if ! [[ "$DPI" =~ ^[0-9]+$ ]] || [ "$DPI" -lt 120 ] || [ "$DPI" -gt 640 ]; then
+          echo "::error::dpi must be a number from 120 to 640"
+          exit 1
+        fi
         mkdir -p out
         java -jar "$MORPHE_JAR" patch \
           -p "$PATCHES_FILE" \

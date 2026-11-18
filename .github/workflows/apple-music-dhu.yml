@@ -123,9 +123,17 @@ jobs:
             echo "::error::$(basename "$apk") is $pkg, not $APPLE_MUSIC_PACKAGE"
             exit 1
           fi
-          dn=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" | grep -m1 'Signer #1 certificate DN' || true)
-          sha=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" | grep -m1 'Signer #1 certificate SHA-256' || true)
-          echo "$(basename "$apk"): $dn"
+          # Newer apksigner prints "Signer (minSdkVersion=…) certificate …" for v3.1 rotation,
+          # older ones "Signer #1 certificate …"; match both.
+          if ! certs=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" 2>&1); then
+            echo "$certs"
+            echo "::error::$(basename "$apk") has an invalid signature"
+            exit 1
+          fi
+          dn=$(printf '%s\n' "$certs" | grep -m1 'certificate DN:' | sed 's/.*certificate DN: //' || true)
+          sha=$(printf '%s\n' "$certs" | grep -m1 'certificate SHA-256 digest:' | sed 's/.*digest: //' || true)
+          echo "$(basename "$apk"): $dn ($sha)"
+          [ -n "$sha" ] || { printf '%s\n' "$certs"; echo "::error::No signer certificate found in $(basename "$apk")"; exit 1; }
           signers="$signers$sha"$'\n'
         done
         $found_package || { echo "::error::No $APPLE_MUSIC_PACKAGE APK in the input"; exit 1; }

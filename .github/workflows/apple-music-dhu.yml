@@ -1,0 +1,229 @@
+name: Apple Music for the EX5 head unit
+run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, keep ${{ inputs.keep_abis }})
+'on':
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: Direct download URL of the original Apple Music .apk / .apkm / .xapk / .apks
+        required: true
+        type: string
+      apk_sha256:
+        description: Expected SHA-256 of that download (optional, recommended)
+        required: false
+        type: string
+        default: ''
+      dpi:
+        description: UI density for the head unit (bigger = larger UI)
+        type: choice
+        options: ['200', '240', '280', '320', '360']
+        default: '280'
+      keep_abis:
+        description: Native library architectures to keep (EX5 head unit is arm64)
+        type: string
+        default: arm64-v8a
+      media_bridge:
+        description: Zeekr MediaCenter bridge (only useful on Zeekr units, not needed on Geely EX5)
+        type: boolean
+        default: false
+      allow_unknown_signer:
+        description: Accept an input APK that is not signed by Apple (not recommended)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: apple-music-dhu-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GH_TOKEN: ${{ github.token }}
+  # Patch bundle: https://github.com/mormislaw/zeekr-adapt-morphe-patches (GPLv3), pinned release.
+  PATCHES_REPO: mormislaw/zeekr-adapt-morphe-patches
+  PATCHES_TAG: v1.0.0
+  MORPHE_REPO: MorpheApp/morphe-desktop
+  APPLE_MUSIC_PACKAGE: com.apple.android.music
+jobs:
+  patch:
+    name: Patch, strip and sign Apple Music
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Locate Android build tools
+      run: |
+        set -euo pipefail
+        bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+        echo "BUILD_TOOLS=$bt" >> "$GITHUB_ENV"
+        echo "Using $bt"
+
+    - name: Download the original Apple Music package
+      env:
+        APK_URL: ${{ inputs.apk_url }}
+        APK_SHA256: ${{ inputs.apk_sha256 }}
+      run: |
+        set -euo pipefail
+        mkdir -p work/download
+        curl -fL --retry 3 --proto '=https' -o work/download/input.bin "$APK_URL"
+        actual=$(sha256sum work/download/input.bin | cut -d' ' -f1)
+        echo "Input SHA-256: $actual"
+        echo "INPUT_SHA256=$actual" >> "$GITHUB_ENV"
+        if [ -n "$APK_SHA256" ] && [ "${APK_SHA256,,}" != "$actual" ]; then
+          echo "::error::SHA-256 mismatch: expected $APK_SHA256"
+          exit 1
+        fi
+
+    - name: Identify the package and verify Apple's signature
+      env:
+        ALLOW_UNKNOWN_SIGNER: ${{ inputs.allow_unknown_signer }}
+      run: |
+        set -euo pipefail
+        cd work
+        # A single APK has AndroidManifest.xml at the root; a bundle holds several APKs.
+        kind=$(python3 -I - download/input.bin <<'EOF'
+        import sys, zipfile
+        with zipfile.ZipFile(sys.argv[1]) as z:
+            names = z.namelist()
+        if "AndroidManifest.xml" in names:
+            print("apk")
+        elif any(n.endswith(".apk") for n in names):
+            print("xapk" if "manifest.json" in names else "apks")
+        else:
+            sys.exit("Not an APK or split-APK bundle")
+        EOF
+        )
+        echo "Input kind: $kind"
+        mkdir -p apks
+        if [ "$kind" = apk ]; then
+          cp download/input.bin apks/base.apk
+        else
+          unzip -q -j download/input.bin '*.apk' -d apks
+        fi
+        cp download/input.bin "input.$kind"
+        echo "INPUT_FILE=$PWD/input.$kind" >> "$GITHUB_ENV"
+
+        found_package=false
+        signers=""
+        for apk in apks/*.apk; do
+          pkg=$("$BUILD_TOOLS/aapt2" dump packagename "$apk")
+          [ "$pkg" = "$APPLE_MUSIC_PACKAGE" ] && found_package=true
+          if [ "$pkg" != "$APPLE_MUSIC_PACKAGE" ]; then
+            echo "::error::$(basename "$apk") is $pkg, not $APPLE_MUSIC_PACKAGE"
+            exit 1
+          fi
+          dn=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" | grep -m1 'Signer #1 certificate DN' || true)
+          sha=$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk" | grep -m1 'Signer #1 certificate SHA-256' || true)
+          echo "$(basename "$apk"): $dn"
+          signers="$signers$sha"$'\n'
+        done
+        $found_package || { echo "::error::No $APPLE_MUSIC_PACKAGE APK in the input"; exit 1; }
+        if [ "$(printf '%s' "$signers" | sort -u | grep -c .)" != 1 ]; then
+          echo "::error::The split APKs are signed by different certificates"
+          exit 1
+        fi
+        first=$(ls apks/*.apk | head -1)
+        "$BUILD_TOOLS/apksigner" verify --print-certs "$first" | tee signer.txt
+        if ! grep -qi 'certificate DN:.*apple' signer.txt; then
+          if [ "$ALLOW_UNKNOWN_SIGNER" = true ]; then
+            echo "::warning::The input is not signed by an Apple certificate"
+          else
+            echo "::error::The input is not signed by Apple. Use the original store APK (or set allow_unknown_signer)."
+            exit 1
+          fi
+        fi
+        version=$("$BUILD_TOOLS/aapt2" dump badging "$first" 2>/dev/null | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+        echo "APP_VERSION=${version:-unknown}" >> "$GITHUB_ENV"
+        echo "Apple Music version: ${version:-unknown}"
+
+    - name: Download Morphe and the zeekr-adapt patch bundle
+      run: |
+        set -euo pipefail
+        mkdir -p tools
+        gh release download "$PATCHES_TAG" --repo "$PATCHES_REPO" --pattern 'patches-*.mpp' --dir tools
+        gh release download --repo "$MORPHE_REPO" --pattern 'morphe-desktop-*-all.jar' --dir tools
+        ls -l tools
+        (cd tools && sha256sum * | tee ../tools.sha256)
+        echo "PATCHES_FILE=$(ls "$PWD"/tools/patches-*.mpp)" >> "$GITHUB_ENV"
+        echo "MORPHE_JAR=$(ls "$PWD"/tools/morphe-desktop-*-all.jar)" >> "$GITHUB_ENV"
+
+    - name: Apply the DHU adapter patch and strip unused native libraries
+      env:
+        DPI: ${{ inputs.dpi }}
+        KEEP_ABIS: ${{ inputs.keep_abis }}
+        MEDIA_BRIDGE: ${{ inputs.media_bridge }}
+      run: |
+        set -euo pipefail
+        mkdir -p out
+        java -jar "$MORPHE_JAR" patch \
+          -p "$PATCHES_FILE" \
+          --exclusive -e "DHU adapter" \
+          -OmetricsDpi="$DPI" -OconfigDpi="$DPI" \
+          -OmediaBridge="$MEDIA_BRIDGE" \
+          --striplibs "$KEEP_ABIS" \
+          --unsigned \
+          -t work/tmp \
+          -r out/patch-result.json \
+          -o work/patched-unsigned.apk \
+          "$INPUT_FILE"
+
+        # The patch also ships Pine for armeabi-v7a as an asset; drop the ABIs we do not keep.
+        IFS=',' read -ra keep <<< "$KEEP_ABIS"
+        for abi in arm64-v8a armeabi-v7a; do
+          keep_it=false
+          for k in "${keep[@]}"; do [ "$(echo "$k" | xargs)" = "$abi" ] && keep_it=true; done
+          if ! $keep_it; then
+            zip -q -d work/patched-unsigned.apk "assets/dhu-adapter/lib/$abi/*" || true
+          fi
+        done
+        echo "Native libraries left in the APK:"
+        unzip -l work/patched-unsigned.apk | awk '{print $4}' | grep -E '^(lib/|assets/dhu-adapter/lib/).*\.so$' | xargs -r -n1 dirname | sort | uniq -c
+
+    - name: Align and sign
+      env:
+        KEYSTORE_B64: ${{ secrets.APPLE_MUSIC_DHU_KEYSTORE_B64 }}
+        KEYSTORE_PASSWORD: ${{ secrets.APPLE_MUSIC_DHU_KEYSTORE_PASSWORD }}
+        DPI: ${{ inputs.dpi }}
+        KEEP_ABIS: ${{ inputs.keep_abis }}
+        MEDIA_BRIDGE: ${{ inputs.media_bridge }}
+      run: |
+        set -euo pipefail
+        if [ -n "${KEYSTORE_B64:-}" ]; then
+          echo "$KEYSTORE_B64" | base64 -d > work/sign.p12
+          pass="$KEYSTORE_PASSWORD"
+          echo "SIGNING=repository secret (stable key, updates install over each other)" >> "$GITHUB_ENV"
+        else
+          pass=$(openssl rand -hex 16)
+          keytool -genkeypair -keystore work/sign.p12 -storetype PKCS12 -storepass "$pass" \
+            -alias dhu -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=DHU Adapter" >/dev/null
+          echo "::warning::No APPLE_MUSIC_DHU_KEYSTORE_B64 secret: signed with a one-off key, uninstall before installing the next build."
+          echo "SIGNING=one-off key (uninstall before the next build)" >> "$GITHUB_ENV"
+        fi
+        "$BUILD_TOOLS/zipalign" -f -P 16 4 work/patched-unsigned.apk work/aligned.apk
+        name="AppleMusic-${APP_VERSION}-DHU.apk"
+        "$BUILD_TOOLS/apksigner" sign --ks work/sign.p12 --ks-pass "pass:$pass" --out "out/$name" work/aligned.apk
+        "$BUILD_TOOLS/apksigner" verify --print-certs "out/$name" > out/signature.txt
+        test "$("$BUILD_TOOLS/aapt2" dump packagename "out/$name")" = "$APPLE_MUSIC_PACKAGE"
+        (cd out && sha256sum "$name" > "$name.sha256")
+        cp tools.sha256 out/tools.sha256
+        in_size=$(stat -c %s "$INPUT_FILE"); out_size=$(stat -c %s "out/$name")
+        {
+          echo "### Apple Music $APP_VERSION for the head unit"
+          echo
+          echo "- Input SHA-256: \`$INPUT_SHA256\` ($in_size bytes)"
+          echo "- Output: \`$name\`, $out_size bytes"
+          echo "- Output SHA-256: \`$(cut -d' ' -f1 "out/$name.sha256")\`"
+          echo "- Patch: zeekr-adapt \`$PATCHES_TAG\` DHU adapter, $DPI dpi, media bridge $MEDIA_BRIDGE"
+          echo "- Kept native ABIs: $KEEP_ABIS"
+          echo "- Signing: $SIGNING"
+          echo
+          echo "For personal use on your own head unit. Do not redistribute the patched app."
+        } >> "$GITHUB_STEP_SUMMARY"
+        rm -f work/sign.p12
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: apple-music-dhu-apk
+        path: out/
+        retention-days: 7

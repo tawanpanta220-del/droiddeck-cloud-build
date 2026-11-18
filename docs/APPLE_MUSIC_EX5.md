@@ -64,6 +64,7 @@ Workflow `.github/workflows/apple-music-dhu.yml` รับ Apple Music ตัว
    - `lean`: ปิด root bypass และ rounded corners (แนะนำให้ลองก่อน)
    - `minimal`: เหลือแค่ Display ถ้าแอปขึ้น offline หรือเล่นไม่ได้ ให้เปิดกลับทีละตัวด้วย `extra_options`
      เช่น `networkBypass=true` หรือ `networkBypass=true,simReady=true`
+   - ถ้าช้าตอนล็อกอิน ลอง `systemUserAgent=true` (ใช้ user agent ของ WebView บนจอเอง แทน Chrome 120 ที่แพตช์ตั้งไว้)
 
 ไฟล์ `hook-options.txt` ใน artifact บอกว่าแต่ละ build เปิดอะไรไว้บ้าง
 ข้อมูลที่ไม่จำเป็นอื่นๆ เช่น resource ทุก density (ldpi–xxxhdpi) ที่รวมมาจาก split ทำให้ไฟล์ใหญ่ขึ้น แต่ไม่ทำให้ช้าลง

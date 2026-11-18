@@ -36,6 +36,7 @@ run-name: Apple Music DHU patch (${{ inputs.dpi }} dpi, ${{ inputs.profile }})
         description: >-
           Optional overrides, comma-separated key=true/false, e.g. "networkBypass=false,backButton=false".
           Keys: rootBypass emulatorBypass networkBypass simReady roundedCorners backButton forceOrientation fullscreen debug
+          systemUserAgent (true = keep the head unit's WebView user agent instead of Chrome 120)
         type: string
         default: ''
       allow_unknown_signer:
@@ -192,7 +193,7 @@ jobs:
         # Hook categories: every enabled one adds Pine trampolines on framework methods.
         declare -A opt=([rootBypass]=true [emulatorBypass]=true [networkBypass]=true [simReady]=true
                         [roundedCorners]=true [backButton]=true [forceOrientation]=true
-                        [fullscreen]=false [debug]=false)
+                        [fullscreen]=false [debug]=false [systemUserAgent]=false)
         case "$PROFILE" in
           full) ;;
           lean) opt[rootBypass]=false; opt[roundedCorners]=false ;;
@@ -213,7 +214,15 @@ jobs:
           done
         fi
         opt_args=()
-        for key in "${!opt[@]}"; do opt_args+=("-O$key=${opt[$key]}"); done
+        for key in "${!opt[@]}"; do
+          if [ "$key" = systemUserAgent ]; then
+            # Keep the head unit's own WebView user agent (null option) instead of the
+            # patch's fixed Chrome 120 mobile UA, which sign-in pages may treat as stale.
+            [ "${opt[$key]}" = true ] && opt_args+=("-OuserAgentOverride")
+            continue
+          fi
+          opt_args+=("-O$key=${opt[$key]}")
+        done
         echo "Hook options: $(printf '%s ' "${opt_args[@]}" | tr ' ' '\n' | sort | tr '\n' ' ')"
         printf '%s\n' "${opt_args[@]}" | sort > out-options.txt
         if ! [[ "$DPI" =~ ^[0-9]+$ ]] || [ "$DPI" -lt 120 ] || [ "$DPI" -gt 640 ]; then
